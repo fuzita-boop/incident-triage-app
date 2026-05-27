@@ -15,6 +15,7 @@ import { storagePut } from "../storage";
 import { notifyOwner } from "../_core/notification";
 import { protectedProcedure, router } from "../_core/trpc";
 import { nanoid } from "nanoid";
+import { autoCorrectOrientation, extractAndCorrectPdfPages } from "../imageRotation";
 
 // ─── Impact level helpers ────────────────────────────────────────────────────
 
@@ -189,13 +190,50 @@ export const incidentsRouter = router({
       const fileKey = `incidents/${ctx.user.id}/${uploadGroupId}.${ext}`;
       const { url: fileUrl } = await storagePut(fileKey, buffer, input.mimeType);
 
+      // Step 0: 向き自動補正
+      let analysisBase64 = input.fileBase64;
+      let analysisMimeType = input.mimeType;
+      // PDFの場合: 常にページ分割して各ページを向き補正した画像配列を得る
+      let correctedPageBase64s: string[] | null = null;
+      if (input.mimeType === "application/pdf") {
+        try {
+          const { pageBase64s, rotationsApplied } = await extractAndCorrectPdfPages(input.fileBase64);
+          if (pageBase64s.length > 0) {
+            // 回転有無に関わらず常にページ分割済み画像を使用
+            const anyRotated = rotationsApplied.some((r) => r !== 0);
+            if (anyRotated) {
+              console.log(`[incidents] PDF pages rotated: ${rotationsApplied.join(",")}°`);
+            }
+            correctedPageBase64s = pageBase64s;
+          }
+        } catch (e) {
+          console.warn("[incidents] PDF page extraction failed, using original:", e);
+        }
+      } else {
+        // 画像ファイルの向き補正
+        const { correctedBase64, rotationApplied } = await autoCorrectOrientation(input.fileBase64, input.mimeType);
+        if (rotationApplied !== 0) {
+          console.log(`[incidents] Applied ${rotationApplied}° rotation correction`);
+          analysisBase64 = correctedBase64;
+          analysisMimeType = "image/jpeg";
+        }
+      }
+
       // Step 1: 件数検出
-      const reportCount = await detectReportCount(input.mimeType, input.fileBase64, fileUrl);
+      // PDFページ分割済みの場合はページ数=報告書数とみなす
+      let reportCount: number;
+      if (correctedPageBase64s && correctedPageBase64s.length > 0) {
+        reportCount = correctedPageBase64s.length;
+      } else {
+        reportCount = await detectReportCount(analysisMimeType, analysisBase64, fileUrl);
+      }
 
       let drafts;
       if (reportCount <= 1) {
         // 単一報告書
-        const analysis = await analyzeSingleReport(input.mimeType, input.fileBase64, fileUrl, input.reportTypeHint);
+        const singleBase64 = correctedPageBase64s ? correctedPageBase64s[0]! : analysisBase64;
+        const singleMime = correctedPageBase64s ? "image/jpeg" : analysisMimeType;
+        const analysis = await analyzeSingleReport(singleMime, singleBase64, fileUrl, input.reportTypeHint);
         const incident = await createDraftIncident({
           uploadGroupId,
           pageIndex: 0,
@@ -219,7 +257,17 @@ export const incidentsRouter = router({
         drafts = [incident];
       } else {
         // 複数報告書
-        const analyses = await analyzeMultipleReports(input.mimeType, input.fileBase64, fileUrl, reportCount, input.reportTypeHint);
+        let analyses: any[];
+        if (correctedPageBase64s && correctedPageBase64s.length > 0) {
+          // ページ分割済み: 各ページを個別に解析
+          analyses = await Promise.all(
+            correctedPageBase64s.map((pageB64) =>
+              analyzeSingleReport("image/jpeg", pageB64, fileUrl, input.reportTypeHint)
+            )
+          );
+        } else {
+          analyses = await analyzeMultipleReports(analysisMimeType, analysisBase64, fileUrl, reportCount, input.reportTypeHint);
+        }
         const dataList = analyses.map((analysis, idx) => ({
           uploadGroupId,
           pageIndex: idx,

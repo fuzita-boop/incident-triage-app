@@ -57,6 +57,12 @@ vi.mock("./_core/notification", () => ({
   notifyOwner: vi.fn().mockResolvedValue(true),
 }));
 
+// imageRotationのモック: 回転なしでそのまま返す
+vi.mock("./imageRotation", () => ({
+  autoCorrectOrientation: vi.fn().mockResolvedValue({ correctedBase64: "fake-base64", rotationApplied: 0 }),
+  extractAndCorrectPdfPages: vi.fn().mockResolvedValue({ pageBase64s: [], rotationsApplied: [] }),
+}));
+
 import {
   createDraftIncident,
   createDraftIncidents,
@@ -196,23 +202,30 @@ describe("incidents.analyzeAndCreateDraft (複数報告書)", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("複数報告書を検出した場合にcreateDraftIncidentsが呼ばれ、count=3で返る", async () => {
-    // Step1: 件数検出 → "3"
-    // Step2: 複数解析 → JSON配列
+    const { extractAndCorrectPdfPages } = await import("./imageRotation");
+    // PDFページ分割: 3ページを返すようにモック
+    vi.mocked(extractAndCorrectPdfPages).mockResolvedValueOnce({
+      pageBase64s: [
+        Buffer.from("page1").toString("base64"),
+        Buffer.from("page2").toString("base64"),
+        Buffer.from("page3").toString("base64"),
+      ],
+      rotationsApplied: [0, 0, 0],
+    } as any);
+
+    // 各ページの個別解析レスポンス（3回）
+    const makePageResponse = (idx: number, level: string, urg: string, type: string) => ({
+      choices: [{ message: { content: JSON.stringify({
+        occurredAt: `2024-01-${15 + idx}`, location: `${idx + 1}F`, subjectInitials: "A.B.",
+        summaryWhat: `転倒${idx + 1}`, summaryCause: `原因${idx + 1}`, summaryResult: `結果${idx + 1}`,
+        impactLevel: level, urgency: urg, importance: urg, reportType: type,
+        preventionActions: [`対策${idx + 1}`],
+      }) } }],
+    });
     vi.mocked(invokeLLM)
-      .mockResolvedValueOnce({ choices: [{ message: { content: "3" } }] } as any)
-      .mockResolvedValueOnce({
-        choices: [{
-          message: {
-            content: JSON.stringify({
-              reports: [
-                { occurredAt: "2024-01-15", location: "1F", subjectInitials: "A.B.", summaryWhat: "転倒1", summaryCause: "原因1", summaryResult: "結果1", impactLevel: "1", urgency: "Low", importance: "Low", reportType: "incident", preventionActions: ["対策1"] },
-                { occurredAt: "2024-01-16", location: "2F", subjectInitials: "C.D.", summaryWhat: "転倒2", summaryCause: "原因2", summaryResult: "結果2", impactLevel: "2", urgency: "Medium", importance: "Medium", reportType: "incident", preventionActions: ["対策2"] },
-                { occurredAt: "2024-01-17", location: "3F", subjectInitials: "E.F.", summaryWhat: "転倒3", summaryCause: "原因3", summaryResult: "結果3", impactLevel: "3b", urgency: "High", importance: "High", reportType: "accident", preventionActions: ["対策3"] },
-              ],
-            }),
-          },
-        }],
-      } as any);
+      .mockResolvedValueOnce(makePageResponse(0, "1", "Low", "incident") as any)
+      .mockResolvedValueOnce(makePageResponse(1, "2", "Medium", "incident") as any)
+      .mockResolvedValueOnce(makePageResponse(2, "3b", "High", "accident") as any);
 
     const mockDrafts = [
       { id: 1, status: "draft", impactLevel: "1", urgency: "Low", uploadGroupId: "grp", pageIndex: 0, createdAt: new Date(), updatedAt: new Date() },
@@ -232,6 +245,52 @@ describe("incidents.analyzeAndCreateDraft (複数報告書)", () => {
     expect(result.count).toBe(3);
     expect(result.incidents).toHaveLength(3);
     expect(result.incidents[2]?.impactLevel).toBe("3b");
+  });
+});
+
+describe("incidents.analyzeAndCreateDraft (PDFページ分割・回転0度)", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("PDFページ分割成功・回転0度の場合でも各ページを個別解析する", async () => {
+    const { extractAndCorrectPdfPages } = await import("./imageRotation");
+    // 2ページ、回転なし
+    vi.mocked(extractAndCorrectPdfPages).mockResolvedValueOnce({
+      pageBase64s: [
+        Buffer.from("page1").toString("base64"),
+        Buffer.from("page2").toString("base64"),
+      ],
+      rotationsApplied: [0, 0],
+    } as any);
+
+    const makePageResponse = (idx: number) => ({
+      choices: [{ message: { content: JSON.stringify({
+        occurredAt: `2024-02-0${idx + 1}`, location: `${idx + 1}F`, subjectInitials: "X.Y.",
+        summaryWhat: `事象${idx + 1}`, summaryCause: `原因${idx + 1}`, summaryResult: `結果${idx + 1}`,
+        impactLevel: "1", urgency: "Low", importance: "Low", reportType: "incident",
+        preventionActions: [`対策${idx + 1}`],
+      }) } }],
+    });
+    vi.mocked(invokeLLM)
+      .mockResolvedValueOnce(makePageResponse(0) as any)
+      .mockResolvedValueOnce(makePageResponse(1) as any);
+
+    const mockDrafts = [
+      { id: 10, status: "draft", impactLevel: "1", urgency: "Low", uploadGroupId: "grp2", pageIndex: 0, createdAt: new Date(), updatedAt: new Date() },
+      { id: 11, status: "draft", impactLevel: "1", urgency: "Low", uploadGroupId: "grp2", pageIndex: 1, createdAt: new Date(), updatedAt: new Date() },
+    ];
+    vi.mocked(createDraftIncidents).mockResolvedValue(mockDrafts as any);
+
+    const caller = appRouter.createCaller(createAuthContext());
+    const result = await caller.incidents.analyzeAndCreateDraft({
+      fileBase64: Buffer.from("fake-pdf-2pages").toString("base64"),
+      fileName: "test2.pdf",
+      mimeType: "application/pdf",
+    });
+
+    // 回転が0度でもページ分割済みの場合は個別解析される
+    expect(createDraftIncidents).toHaveBeenCalledTimes(1);
+    expect(result.count).toBe(2);
+    expect(result.incidents).toHaveLength(2);
   });
 });
 
