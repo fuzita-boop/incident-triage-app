@@ -59,8 +59,8 @@
 - [x] テスト更新（13テスト全パス）
 
 ## 変更: AI再発防止策の強化
-- [ ] サーバー: AIプロンプトを2段階に変更（①報告書記載の対策を抽出 ②AIが医療・介護知見から追加策を深く提案）
-- [ ] サーバー: preventionActionsをreportedActionsとaiSuggestedActionsに分離したスキーマに変更
-- [ ] DBスキーマ: preventionActionsカラムをreportedActionsとaiSuggestedActionsに分割
-- [ ] フロントエンド: 確認・編集画面で「報告書記載の対策」と「AI追加提案」を区別して表示
-- [ ] テスト更新
+- [x] サーバー: AIプロンプトを強化（reportedActions抽出 + aiSuggestedActions 5点以上提案）
+- [x] サーバー: preventionActionsをreportedActionsとaiSuggestedActionsに分離したスキーマに変更
+- [x] DBスキーマ: reportedActions・aiSuggestedActionsカラムをSQLで追加
+- [x] フロントエンド: 確認・編集画面で「報告書記載の対策」と「AI提案再発防止策」を分離表示（追加・削除・編集可能）
+- [x] テスト更新（14テスト全パス）

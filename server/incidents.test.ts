@@ -328,7 +328,7 @@ describe("incidents.updateDraft", () => {
     vi.mocked(updateIncident).mockResolvedValue(updatedIncident as any);
 
     const caller = appRouter.createCaller(createAuthContext());
-    const result = await caller.incidents.updateDraft({
+    await caller.incidents.updateDraft({
       id: 1,
       summaryWhat: "更新後の概要",
       impactLevel: "2",
@@ -336,6 +336,27 @@ describe("incidents.updateDraft", () => {
     });
 
     expect(updateIncident).toHaveBeenCalledWith(1, expect.objectContaining({ summaryWhat: "更新後の概要" }));
+  });
+
+  it("reportedActionsとaiSuggestedActionsをJSON文字列としてシリアライズして保存する", async () => {
+    const { updateIncident } = await import("./db");
+    vi.mocked(updateIncident).mockResolvedValue({ id: 1 } as any);
+
+    const caller = appRouter.createCaller(createAuthContext());
+    await caller.incidents.updateDraft({
+      id: 1,
+      reportedActions: ["ベッド柵を上げる", "見守りを強化する"],
+      aiSuggestedActions: ["転倒リスクアセスメントを毎月実施する", "夜間の巡回頻度を増やす", "環境整備チェックリストを導入する"],
+    });
+
+    expect(updateIncident).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({
+        reportedActions: JSON.stringify(["ベッド柵を上げる", "見守りを強化する"]),
+        aiSuggestedActions: JSON.stringify(["転倒リスクアセスメントを毎月実施する", "夜間の巡回頻度を増やす", "環境整備チェックリストを導入する"]),
+        preventionActions: JSON.stringify(["転倒リスクアセスメントを毎月実施する", "夜間の巡回頻度を増やす", "環境整備チェックリストを導入する"]),
+      })
+    );
   });
 });
 
