@@ -56,7 +56,9 @@ export const incidents = mysqlTable("incidents", {
   reportType: mysqlEnum("reportType", ["incident", "accident"]).default("incident"),
 
   // ── AI提案の改善アクション（JSON配列文字列として保存）────────────
-  preventionActions: text("preventionActions"),              // JSON string: string[]
+  preventionActions: text("preventionActions"),              // JSON string: string[] (後方互換用)
+  reportedActions: text("reportedActions"),                  // JSON string: 報告書に記載された対策
+  aiSuggestedActions: text("aiSuggestedActions"),            // JSON string: AIが追加提案する再発防止策
 
   // ── ステータス ────────────────────────────────────────────────────
   status: mysqlEnum("status", ["draft", "confirmed"]).default("draft").notNull(),

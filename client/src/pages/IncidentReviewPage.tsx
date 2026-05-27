@@ -21,8 +21,11 @@ import {
   ArrowLeft,
   CheckCircle2,
   FileText,
+  Lightbulb,
+  Plus,
   Sparkles,
   Stethoscope,
+  Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -41,6 +44,16 @@ const URGENCY_LABELS_JP: Record<UrgencyLevel, string> = {
   Medium: "中",
   Low: "低",
 };
+
+function parseJsonArray(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((s) => typeof s === "string") : [];
+  } catch {
+    return [];
+  }
+}
 
 export default function IncidentReviewPage() {
   const params = useParams<{ id: string }>();
@@ -74,18 +87,18 @@ export default function IncidentReviewPage() {
     urgency: "Low" as UrgencyLevel,
     importance: "Low" as UrgencyLevel,
     reportType: "incident" as ReportType,
-    preventionActions: ["", "", ""] as string[],
+    reportedActions: [] as string[],      // 報告書記載の対策
+    aiSuggestedActions: [] as string[],   // AI提案の再発防止策
   });
 
   useEffect(() => {
     if (incident) {
-      let actions: string[] = ["", "", ""];
-      try {
-        const parsed = JSON.parse(incident.preventionActions ?? "[]");
-        if (Array.isArray(parsed)) {
-          actions = [...parsed, "", "", ""].slice(0, 3);
-        }
-      } catch {}
+      // 後方互換: aiSuggestedActionsがなければpreventionActionsから読む
+      const aiActions = parseJsonArray(incident.aiSuggestedActions as string | null)
+        .length > 0
+        ? parseJsonArray(incident.aiSuggestedActions as string | null)
+        : parseJsonArray(incident.preventionActions as string | null);
+
       setForm({
         occurredAt: incident.occurredAt ?? "",
         location: incident.location ?? "",
@@ -97,7 +110,8 @@ export default function IncidentReviewPage() {
         urgency: (incident.urgency ?? "Low") as UrgencyLevel,
         importance: (incident.importance ?? "Low") as UrgencyLevel,
         reportType: (incident.reportType ?? "incident") as ReportType,
-        preventionActions: actions,
+        reportedActions: parseJsonArray(incident.reportedActions as string | null),
+        aiSuggestedActions: aiActions,
       });
     }
   }, [incident]);
@@ -106,14 +120,22 @@ export default function IncidentReviewPage() {
   const isConfirmed = incident?.status === "confirmed";
 
   const handleSave = () => {
-    const actions = form.preventionActions.filter((a) => a.trim() !== "");
-    updateMutation.mutate({ id, ...form, preventionActions: actions });
+    updateMutation.mutate({
+      id,
+      ...form,
+      reportedActions: form.reportedActions.filter((a) => a.trim() !== ""),
+      aiSuggestedActions: form.aiSuggestedActions.filter((a) => a.trim() !== ""),
+    });
   };
 
   const handleConfirm = () => {
-    const actions = form.preventionActions.filter((a) => a.trim() !== "");
     updateMutation.mutate(
-      { id, ...form, preventionActions: actions },
+      {
+        id,
+        ...form,
+        reportedActions: form.reportedActions.filter((a) => a.trim() !== ""),
+        aiSuggestedActions: form.aiSuggestedActions.filter((a) => a.trim() !== ""),
+      },
       { onSuccess: () => confirmMutation.mutate({ id }) }
     );
   };
@@ -425,35 +447,125 @@ export default function IncidentReviewPage() {
             </CardContent>
           </Card>
 
-          {/* 再発防止策 */}
+          {/* 報告書記載の対策 */}
           <Card className="shadow-sm border-border/60">
             <CardHeader className="pb-3 border-b border-border/50">
               <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
-                <Sparkles className="h-4 w-4 text-primary" />
-                AI提案: 再発防止策・改善アクション
+                <FileText className="h-4 w-4 text-slate-500" />
+                報告書に記載された対策
               </CardTitle>
             </CardHeader>
-            <CardContent className="pt-4 space-y-2">
-              {form.preventionActions.map((action, i) => (
-                <div key={i} className="flex items-start gap-2">
-                  <span className="mt-2 h-5 w-5 rounded-full bg-primary/10 text-primary text-xs flex items-center justify-center font-semibold shrink-0">
-                    {i + 1}
-                  </span>
-                  <Textarea
-                    value={action}
-                    onChange={(e) => {
-                      const updated = [...form.preventionActions];
-                      updated[i] = e.target.value;
-                      setForm((f) => ({ ...f, preventionActions: updated }));
-                    }}
-                    disabled={isConfirmed}
-                    rows={2}
-                    className="text-sm resize-none flex-1"
-                    placeholder={`改善アクション ${i + 1}（任意）`}
-                  />
-                </div>
-              ))}
-              <p className="text-xs text-muted-foreground">※ 最大3点まで入力できます</p>
+            <CardContent className="pt-4 space-y-3">
+              {form.reportedActions.length === 0 ? (
+                <p className="text-xs text-muted-foreground italic">報告書に対策の記載はありませんでした</p>
+              ) : (
+                form.reportedActions.map((action, i) => (
+                  <div key={i} className="flex items-start gap-2">
+                    <span className="mt-2 h-5 w-5 rounded-full bg-slate-100 text-slate-600 text-xs flex items-center justify-center font-semibold shrink-0">
+                      {i + 1}
+                    </span>
+                    <Textarea
+                      value={action}
+                      onChange={(e) => {
+                        const updated = [...form.reportedActions];
+                        updated[i] = e.target.value;
+                        setForm((f) => ({ ...f, reportedActions: updated }));
+                      }}
+                      disabled={isConfirmed}
+                      rows={2}
+                      className="text-sm resize-none flex-1"
+                      placeholder={`報告書記載の対策 ${i + 1}`}
+                    />
+                    {!isConfirmed && (
+                      <button
+                        onClick={() => {
+                          const updated = form.reportedActions.filter((_, idx) => idx !== i);
+                          setForm((f) => ({ ...f, reportedActions: updated }));
+                        }}
+                        className="mt-2 text-muted-foreground hover:text-destructive transition-colors"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                ))
+              )}
+              {!isConfirmed && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full text-xs gap-1.5 mt-1"
+                  onClick={() => setForm((f) => ({ ...f, reportedActions: [...f.reportedActions, ""] }))}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  対策を追加
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* AI提案の再発防止策 */}
+          <Card className="shadow-sm border-primary/20 bg-primary/[0.02]">
+            <CardHeader className="pb-3 border-b border-primary/15">
+              <div className="flex items-start justify-between gap-2">
+                <CardTitle className="text-sm font-semibold text-primary/80 uppercase tracking-wide flex items-center gap-2">
+                  <Lightbulb className="h-4 w-4 text-primary" />
+                  AI提案: 再発防止策・改善アクション
+                </CardTitle>
+                <Badge variant="outline" className="text-[10px] text-primary border-primary/30 bg-primary/5 shrink-0">
+                  AI分析
+                </Badge>
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-1">
+                確認不足・手順不備・環境整備・教育研修など多角的な観点からAIが提案した再発防止策です。内容を確認・修正してください。
+              </p>
+            </CardHeader>
+            <CardContent className="pt-4 space-y-3">
+              {form.aiSuggestedActions.length === 0 ? (
+                <p className="text-xs text-muted-foreground italic">AI提案がありません</p>
+              ) : (
+                form.aiSuggestedActions.map((action, i) => (
+                  <div key={i} className="flex items-start gap-2">
+                    <span className="mt-2 h-5 w-5 rounded-full bg-primary/10 text-primary text-xs flex items-center justify-center font-semibold shrink-0">
+                      {i + 1}
+                    </span>
+                    <Textarea
+                      value={action}
+                      onChange={(e) => {
+                        const updated = [...form.aiSuggestedActions];
+                        updated[i] = e.target.value;
+                        setForm((f) => ({ ...f, aiSuggestedActions: updated }));
+                      }}
+                      disabled={isConfirmed}
+                      rows={2}
+                      className="text-sm resize-none flex-1 bg-white/60"
+                      placeholder={`改善アクション ${i + 1}`}
+                    />
+                    {!isConfirmed && (
+                      <button
+                        onClick={() => {
+                          const updated = form.aiSuggestedActions.filter((_, idx) => idx !== i);
+                          setForm((f) => ({ ...f, aiSuggestedActions: updated }));
+                        }}
+                        className="mt-2 text-muted-foreground hover:text-destructive transition-colors"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                ))
+              )}
+              {!isConfirmed && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full text-xs gap-1.5 mt-1 border-primary/30 text-primary hover:bg-primary/5"
+                  onClick={() => setForm((f) => ({ ...f, aiSuggestedActions: [...f.aiSuggestedActions, ""] }))}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  提案を追加
+                </Button>
+              )}
             </CardContent>
           </Card>
 

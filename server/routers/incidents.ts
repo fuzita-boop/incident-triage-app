@@ -17,7 +17,7 @@ import { protectedProcedure, router } from "../_core/trpc";
 import { nanoid } from "nanoid";
 import { autoCorrectOrientation, extractAndCorrectPdfPages } from "../imageRotation";
 
-// ─── Impact level helpers ────────────────────────────────────────────────────
+// Impact level helpers
 
 const IMPACT_LEVELS = ["0", "1", "2", "3a", "3b", "4", "5"] as const;
 type ImpactLevel = (typeof IMPACT_LEVELS)[number];
@@ -27,7 +27,7 @@ function isHighUrgency(impactLevel: ImpactLevel, urgency: string): boolean {
   return highLevels.includes(impactLevel) || urgency === "High";
 }
 
-// ─── AI analysis helpers ─────────────────────────────────────────────────────
+// AI analysis helpers
 
 const SYSTEM_PROMPT = `あなたは医療・介護現場のインシデント・アクシデント報告書を解析する専門AIです。
 以下の基準に従って、報告書の内容を正確に構造化JSONとして抽出してください。
@@ -55,11 +55,49 @@ const SYSTEM_PROMPT = `あなたは医療・介護現場のインシデント・
 - ヒヤリハット・インシデント・危険予知・ニアミス等の文脈 → incident
 - 事故・アクシデント・転倒骨折・受診・入院・死亡等の文脈 → accident
 
+【再発防止策の抽出・提案】
+"reportedActions": 報告書に実際に記載されている対策・改善策をそのまま抽出する。記載がなければ空配列。
+"aiSuggestedActions": 医療・介護安全管理の専門家として、以下の角度から具体的な再発防止策を深く提案する。
+  - 「確認不足」「手順の不備」「環境整備」「コミュニケーション」「教育・研修」「リスクアセスメント」「チェックリスト導入」などの角度から分析する
+  - 報告書に記載のない根本的な原因や潜在リスクも指摘する
+  - 具体的な行動計画（導入するもの、実施タイミング、担当者など）を含める
+  - 5点以上の実践的な提案を行うこと
+
 必ずJSONのみを返してください。マークダウンや説明文は不要です。`;
 
-const SINGLE_REPORT_SCHEMA = `{"occurredAt":"発生日時","location":"発生場所","subjectInitials":"対象者イニシャル","summaryWhat":"何が起きたか","summaryCause":"原因","summaryResult":"結果・影響","impactLevel":"0|1|2|3a|3b|4|5","urgency":"High|Medium|Low","importance":"High|Medium|Low","reportType":"incident|accident","preventionActions":["改善アクション"]}`;
+const SINGLE_REPORT_SCHEMA = `{
+  "occurredAt": "発生日時",
+  "location": "発生場所",
+  "subjectInitials": "対象者イニシャル",
+  "summaryWhat": "何が起きたか",
+  "summaryCause": "原因",
+  "summaryResult": "結果・影響",
+  "impactLevel": "0|1|2|3a|3b|4|5",
+  "urgency": "High|Medium|Low",
+  "importance": "High|Medium|Low",
+  "reportType": "incident|accident",
+  "reportedActions": ["報告書に記載された対策（なければ空配列）"],
+  "aiSuggestedActions": ["AI提案の再発防止策1", "AI提案の再発防止策2", "...5点以上"]
+}`;
 
-const MULTI_REPORT_SCHEMA = `{"reports":[{"occurredAt":"発生日時","location":"発生場所","subjectInitials":"対象者イニシャル","summaryWhat":"何が起きたか","summaryCause":"原因","summaryResult":"結果・影響","impactLevel":"0|1|2|3a|3b|4|5","urgency":"High|Medium|Low","importance":"High|Medium|Low","reportType":"incident|accident","preventionActions":["改善アクション"]}]}`;
+const MULTI_REPORT_SCHEMA = `{
+  "reports": [
+    {
+      "occurredAt": "発生日時",
+      "location": "発生場所",
+      "subjectInitials": "対象者イニシャル",
+      "summaryWhat": "何が起きたか",
+      "summaryCause": "原因",
+      "summaryResult": "結果・影響",
+      "impactLevel": "0|1|2|3a|3b|4|5",
+      "urgency": "High|Medium|Low",
+      "importance": "High|Medium|Low",
+      "reportType": "incident|accident",
+      "reportedActions": ["報告書に記載された対策（なければ空配列）"],
+      "aiSuggestedActions": ["AI提案の再発防止策1", "AI提案の再発防止策2", "...5点以上"]
+    }
+  ]
+}`;
 
 function buildMediaContent(mimeType: string, fileBase64: string, fileUrl: string) {
   if (mimeType === "application/pdf") {
@@ -82,9 +120,12 @@ function parseJsonSafe(content: string | unknown): any {
 }
 
 function normalizeReport(parsed: any, reportTypeHint?: string): any {
-  if (Array.isArray(parsed.preventionActions)) {
-    parsed.preventionActions = parsed.preventionActions.slice(0, 3);
+  // 後方互換: preventionActionsがあればaiSuggestedActionsにもコピー
+  if (Array.isArray(parsed.preventionActions) && !parsed.aiSuggestedActions) {
+    parsed.aiSuggestedActions = parsed.preventionActions;
   }
+  if (!Array.isArray(parsed.reportedActions)) parsed.reportedActions = [];
+  if (!Array.isArray(parsed.aiSuggestedActions)) parsed.aiSuggestedActions = [];
   if (reportTypeHint) parsed.reportType = reportTypeHint;
   return parsed;
 }
@@ -110,7 +151,7 @@ async function detectReportCount(mimeType: string, fileBase64: string, fileUrl: 
   const raw = typeof content === "string" ? content : JSON.stringify(content);
   const match = raw.match(/\d+/);
   const count = match ? parseInt(match[0], 10) : 1;
-  return Math.max(1, Math.min(count, 20)); // 1〜20件に制限
+  return Math.max(1, Math.min(count, 20));
 }
 
 /** Step 2a: 単一報告書の解析 */
@@ -122,7 +163,14 @@ async function analyzeSingleReport(mimeType: string, fileBase64: string, fileUrl
       {
         role: "user",
         content: [
-          { type: "text", text: `以下の報告書を解析し、指定のJSON形式で構造化データを抽出してください。\n必ず以下のJSONスキーマに従って返答してください：\n${SINGLE_REPORT_SCHEMA}\nマークダウンや説明文は一切不要です。JSONのみ返してください。` },
+          {
+            type: "text",
+            text: `以下の報告書を解析し、指定のJSON形式で構造化データを抽出してください。
+特に「aiSuggestedActions」は医療・介護安全の専門家として、確認不足・手順不備・環境整備・コミュニケーション・教育研修・リスクアセスメントなどの観点から5点以上の具体的な再発防止策を提案してください。
+必ず以下のJSONスキーマに従って返答してください：
+${SINGLE_REPORT_SCHEMA}
+マークダウンや説明文は一切不要です。JSONのみ返してください。`,
+          },
           mediaContent as any,
         ],
       },
@@ -149,7 +197,13 @@ async function analyzeMultipleReports(mimeType: string, fileBase64: string, file
       {
         role: "user",
         content: [
-          { type: "text", text: `このファイルには${count}件の報告書が含まれています。各報告書を順番に解析し、以下のJSON配列形式で返してください：\n${MULTI_REPORT_SCHEMA}\n各報告書を1要素として配列に格納してください。マークダウンや説明文は一切不要です。JSONのみ返してください。` },
+          {
+            type: "text",
+            text: `このファイルには${count}件の報告書が含まれています。各報告書を順番に解析し、以下のJSON配列形式で返してください：
+${MULTI_REPORT_SCHEMA}
+各報告書の「aiSuggestedActions」は医療・介護安全の専門家として、確認不足・手順不備・環境整備・コミュニケーション・教育研修・リスクアセスメントなどの観点から5点以上の具体的な再発防止策を提案してください。
+各報告書を1要素として配列に格納してください。マークダウンや説明文は一切不要です。JSONのみ返してください。`,
+          },
           mediaContent as any,
         ],
       },
@@ -169,7 +223,7 @@ async function analyzeMultipleReports(mimeType: string, fileBase64: string, file
   }
 }
 
-// ─── Router ──────────────────────────────────────────────────────────────────
+// Router
 
 export const incidentsRouter = router({
   // ファイルアップロード → AI解析 → draft保存（複数報告書対応）
@@ -193,13 +247,12 @@ export const incidentsRouter = router({
       // Step 0: 向き自動補正
       let analysisBase64 = input.fileBase64;
       let analysisMimeType = input.mimeType;
-      // PDFの場合: 常にページ分割して各ページを向き補正した画像配列を得る
       let correctedPageBase64s: string[] | null = null;
+
       if (input.mimeType === "application/pdf") {
         try {
           const { pageBase64s, rotationsApplied } = await extractAndCorrectPdfPages(input.fileBase64);
           if (pageBase64s.length > 0) {
-            // 回転有無に関わらず常にページ分割済み画像を使用
             const anyRotated = rotationsApplied.some((r) => r !== 0);
             if (anyRotated) {
               console.log(`[incidents] PDF pages rotated: ${rotationsApplied.join(",")}°`);
@@ -210,7 +263,6 @@ export const incidentsRouter = router({
           console.warn("[incidents] PDF page extraction failed, using original:", e);
         }
       } else {
-        // 画像ファイルの向き補正
         const { correctedBase64, rotationApplied } = await autoCorrectOrientation(input.fileBase64, input.mimeType);
         if (rotationApplied !== 0) {
           console.log(`[incidents] Applied ${rotationApplied}° rotation correction`);
@@ -220,7 +272,6 @@ export const incidentsRouter = router({
       }
 
       // Step 1: 件数検出
-      // PDFページ分割済みの場合はページ数=報告書数とみなす
       let reportCount: number;
       if (correctedPageBase64s && correctedPageBase64s.length > 0) {
         reportCount = correctedPageBase64s.length;
@@ -250,7 +301,9 @@ export const incidentsRouter = router({
           urgency: analysis.urgency,
           importance: analysis.importance,
           reportType: analysis.reportType,
-          preventionActions: JSON.stringify(analysis.preventionActions),
+          preventionActions: JSON.stringify(analysis.aiSuggestedActions ?? []),
+          reportedActions: JSON.stringify(analysis.reportedActions ?? []),
+          aiSuggestedActions: JSON.stringify(analysis.aiSuggestedActions ?? []),
           status: "draft",
           createdByUserId: ctx.user.id,
         });
@@ -259,7 +312,6 @@ export const incidentsRouter = router({
         // 複数報告書
         let analyses: any[];
         if (correctedPageBase64s && correctedPageBase64s.length > 0) {
-          // ページ分割済み: 各ページを個別に解析
           analyses = await Promise.all(
             correctedPageBase64s.map((pageB64) =>
               analyzeSingleReport("image/jpeg", pageB64, fileUrl, input.reportTypeHint)
@@ -284,7 +336,9 @@ export const incidentsRouter = router({
           urgency: analysis.urgency,
           importance: analysis.importance,
           reportType: analysis.reportType,
-          preventionActions: JSON.stringify(analysis.preventionActions),
+          preventionActions: JSON.stringify(analysis.aiSuggestedActions ?? []),
+          reportedActions: JSON.stringify(analysis.reportedActions ?? []),
+          aiSuggestedActions: JSON.stringify(analysis.aiSuggestedActions ?? []),
           status: "draft" as const,
           createdByUserId: ctx.user.id,
         }));
@@ -295,7 +349,6 @@ export const incidentsRouter = router({
         uploadGroupId,
         count: drafts.length,
         incidents: drafts,
-        // 後方互換: 単一の場合は最初の1件を返す
         incident: drafts[0] ?? null,
       };
     }),
@@ -322,14 +375,19 @@ export const incidentsRouter = router({
         urgency: z.enum(["High", "Medium", "Low"]).optional(),
         importance: z.enum(["High", "Medium", "Low"]).optional(),
         reportType: z.enum(["incident", "accident"]).optional(),
-        preventionActions: z.array(z.string()).max(3).optional(),
+        reportedActions: z.array(z.string()).optional(),
+        aiSuggestedActions: z.array(z.string()).optional(),
       })
     )
     .mutation(async ({ input }) => {
-      const { id, preventionActions, ...rest } = input;
+      const { id, reportedActions, aiSuggestedActions, ...rest } = input;
       const updateData: any = { ...rest };
-      if (preventionActions !== undefined) {
-        updateData.preventionActions = JSON.stringify(preventionActions);
+      if (reportedActions !== undefined) {
+        updateData.reportedActions = JSON.stringify(reportedActions);
+      }
+      if (aiSuggestedActions !== undefined) {
+        updateData.aiSuggestedActions = JSON.stringify(aiSuggestedActions);
+        updateData.preventionActions = JSON.stringify(aiSuggestedActions); // 後方互換
       }
       return updateIncident(id, updateData);
     }),
@@ -343,14 +401,13 @@ export const incidentsRouter = router({
 
       const confirmed = await confirmIncident(input.id, ctx.user.id);
 
-      // 緊急アラート通知
       const needsAlert = isHighUrgency(
         (incident.impactLevel ?? "0") as ImpactLevel,
         incident.urgency ?? "Low"
       );
       if (needsAlert) {
         await notifyOwner({
-          title: `🚨 緊急インシデント確定: レベル${incident.impactLevel}`,
+          title: `緊急インシデント確定: レベル${incident.impactLevel}`,
           content: `緊急対応性: ${incident.urgency}\n場所: ${incident.location ?? "不明"}\n概要: ${incident.summaryWhat ?? ""}`,
         }).catch(() => {});
       }

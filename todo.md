@@ -57,3 +57,10 @@
 - [x] サーバー: PDFはpdftoppmでページ分割→各ページ向き補正→個別解析のフローに変更
 - [x] サーバー: 画像ファイルは補正後Base64で本解析を実施するフローに変更
 - [x] テスト更新（13テスト全パス）
+
+## 変更: AI再発防止策の強化
+- [ ] サーバー: AIプロンプトを2段階に変更（①報告書記載の対策を抽出 ②AIが医療・介護知見から追加策を深く提案）
+- [ ] サーバー: preventionActionsをreportedActionsとaiSuggestedActionsに分離したスキーマに変更
+- [ ] DBスキーマ: preventionActionsカラムをreportedActionsとaiSuggestedActionsに分割
+- [ ] フロントエンド: 確認・編集画面で「報告書記載の対策」と「AI追加提案」を区別して表示
+- [ ] テスト更新
