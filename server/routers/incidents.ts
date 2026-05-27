@@ -28,7 +28,7 @@ function isHighUrgency(impactLevel: ImpactLevel, urgency: string): boolean {
 async function analyzeIncidentWithAI(
   fileUrl: string,
   mimeType: string,
-  locationTagHint?: string
+  reportTypeHint?: string
 ) {
   const systemPrompt = `あなたは医療・介護現場のインシデント・アクシデント報告書を解析する専門AIです。
 以下の基準に従って、報告書の内容を正確に構造化JSONとして抽出してください。
@@ -52,9 +52,9 @@ async function analyzeIncidentWithAI(
 - レベルが低くても「複数回発生」「マニュアルの不備」「環境的欠陥」がある場合 → High または Medium
 - 再発防止策の策定が必要 → Medium以上
 
-【拠点タグ】
-- 「施設」「ホーム」「老人ホーム」「デイ」等の文脈 → facility
-- 「訪問」「在宅」「居宅」等の文脈 → visit
+【報告種別】
+- ヒヤリハット・インシデント・危険予知・ニアミス等の文脈 → incident
+- 事故・アクシデント・転倒骨折・受診・入院・死亡等の文脈 → accident
 
 必ずJSONのみを返してください。マークダウンや説明文は不要です。`;
 
@@ -111,10 +111,10 @@ async function analyzeIncidentWithAI(
               enum: ["High", "Medium", "Low"],
               description: "重要度",
             },
-            locationTag: {
+            reportType: {
               type: "string",
-              enum: ["facility", "visit"],
-              description: "拠点タグ",
+              enum: ["incident", "accident"],
+              description: "報告種別（incident=ヒヤリハット, accident=事故報告書）",
             },
             preventionActions: {
               type: "array",
@@ -132,7 +132,7 @@ async function analyzeIncidentWithAI(
             "impactLevel",
             "urgency",
             "importance",
-            "locationTag",
+            "reportType",
             "preventionActions",
           ],
           additionalProperties: false,
@@ -141,8 +141,11 @@ async function analyzeIncidentWithAI(
     },
   });
 
+  if (!response || !response.choices || response.choices.length === 0) {
+    throw new Error("AI response is empty or malformed");
+  }
   const content = response.choices[0]?.message?.content;
-  if (!content) throw new Error("AI response is empty");
+  if (!content) throw new Error("AI response content is empty");
 
   const parsed = typeof content === "string" ? JSON.parse(content) : content;
 
@@ -151,9 +154,9 @@ async function analyzeIncidentWithAI(
     parsed.preventionActions = parsed.preventionActions.slice(0, 3);
   }
 
-  // 拠点ヒントがあれば上書き
-  if (locationTagHint) {
-    parsed.locationTag = locationTagHint;
+  // 報告種別ヒントがあれば上書き
+  if (reportTypeHint) {
+    parsed.reportType = reportTypeHint;
   }
 
   return parsed;
@@ -223,7 +226,7 @@ export const incidentsRouter = router({
         impactLevel: z.enum(["0", "1", "2", "3a", "3b", "4", "5"]).optional(),
         urgency: z.enum(["High", "Medium", "Low"]).optional(),
         importance: z.enum(["High", "Medium", "Low"]).optional(),
-        locationTag: z.enum(["facility", "visit"]).optional(),
+        reportType: z.enum(["incident", "accident"]).optional(),
         preventionActions: z.array(z.string()).max(3).optional(),
       })
     )
