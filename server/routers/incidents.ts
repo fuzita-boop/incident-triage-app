@@ -28,7 +28,8 @@ function isHighUrgency(impactLevel: ImpactLevel, urgency: string): boolean {
 async function analyzeIncidentWithAI(
   fileUrl: string,
   mimeType: string,
-  reportTypeHint?: string
+  reportTypeHint?: string,
+  fileBase64?: string
 ) {
   const systemPrompt = `あなたは医療・介護現場のインシデント・アクシデント報告書を解析する専門AIです。
 以下の基準に従って、報告書の内容を正確に構造化JSONとして抽出してください。
@@ -61,20 +62,42 @@ async function analyzeIncidentWithAI(
   const userContent: any[] = [
     {
       type: "text",
-      text: "以下の報告書を解析し、指定のJSON形式で構造化データを抽出してください。",
+      text: "以下の報告書を解析し、指定のJSON形式で構造化データを抽出してください。\n必ず以下のJSONスキーマに従って返答してください：\n{\"occurredAt\":\"発生日時\",\"location\":\"発生場所\",\"subjectInitials\":\"対象者イニシャル\",\"summaryWhat\":\"何が起きたか\",\"summaryCause\":\"原因\",\"summaryResult\":\"結果・影響\",\"impactLevel\":\"0|1|2|3a|3b|4|5\",\"urgency\":\"High|Medium|Low\",\"importance\":\"High|Medium|Low\",\"reportType\":\"incident|accident\",\"preventionActions\":[\"改善アクション\"]}\nマークダウンや説明文は一切不要です。JSONのみ返してください。",
     },
   ];
 
   if (mimeType === "application/pdf") {
-    userContent.push({
-      type: "file_url",
-      file_url: { url: fileUrl, mime_type: "application/pdf" },
-    });
+    // PDFはBase64データを直接渡す（file_urlがサポートされない場合のフォールバック）
+    if (fileBase64) {
+      userContent.push({
+        type: "image_url",
+        image_url: {
+          url: `data:application/pdf;base64,${fileBase64}`,
+          detail: "high",
+        },
+      });
+    } else {
+      userContent.push({
+        type: "file_url",
+        file_url: { url: fileUrl, mime_type: "application/pdf" },
+      });
+    }
   } else {
-    userContent.push({
-      type: "image_url",
-      image_url: { url: fileUrl, detail: "high" },
-    });
+    // 画像はBase64データ URLで渡す
+    if (fileBase64) {
+      userContent.push({
+        type: "image_url",
+        image_url: {
+          url: `data:${mimeType};base64,${fileBase64}`,
+          detail: "high",
+        },
+      });
+    } else {
+      userContent.push({
+        type: "image_url",
+        image_url: { url: fileUrl, detail: "high" },
+      });
+    }
   }
 
   const response = await invokeLLM({
@@ -82,63 +105,7 @@ async function analyzeIncidentWithAI(
       { role: "system", content: systemPrompt },
       { role: "user", content: userContent },
     ],
-    response_format: {
-      type: "json_schema",
-      json_schema: {
-        name: "incident_analysis",
-        strict: true,
-        schema: {
-          type: "object",
-          properties: {
-            occurredAt: { type: "string", description: "発生日時（テキスト形式）" },
-            location: { type: "string", description: "発生場所" },
-            subjectInitials: { type: "string", description: "対象者のイニシャルまたは匿名表記" },
-            summaryWhat: { type: "string", description: "何が起きたか（30文字程度）" },
-            summaryCause: { type: "string", description: "原因（30文字程度）" },
-            summaryResult: { type: "string", description: "結果・影響（30文字程度）" },
-            impactLevel: {
-              type: "string",
-              enum: ["0", "1", "2", "3a", "3b", "4", "5"],
-              description: "影響度レベル",
-            },
-            urgency: {
-              type: "string",
-              enum: ["High", "Medium", "Low"],
-              description: "緊急対応性",
-            },
-            importance: {
-              type: "string",
-              enum: ["High", "Medium", "Low"],
-              description: "重要度",
-            },
-            reportType: {
-              type: "string",
-              enum: ["incident", "accident"],
-              description: "報告種別（incident=ヒヤリハット, accident=事故報告書）",
-            },
-            preventionActions: {
-              type: "array",
-              items: { type: "string" },
-              description: "再発防止策・改善アクション案（3点以内）",
-            },
-          },
-          required: [
-            "occurredAt",
-            "location",
-            "subjectInitials",
-            "summaryWhat",
-            "summaryCause",
-            "summaryResult",
-            "impactLevel",
-            "urgency",
-            "importance",
-            "reportType",
-            "preventionActions",
-          ],
-          additionalProperties: false,
-        },
-      },
-    },
+    response_format: { type: "json_object" },
   });
 
   if (!response || !response.choices || response.choices.length === 0) {
@@ -147,7 +114,17 @@ async function analyzeIncidentWithAI(
   const content = response.choices[0]?.message?.content;
   if (!content) throw new Error("AI response content is empty");
 
-  const parsed = typeof content === "string" ? JSON.parse(content) : content;
+  let parsed: any;
+  try {
+    // マークダウンコードブロックが含まれる場合も考慮
+    const rawContent = typeof content === "string" ? content : JSON.stringify(content);
+    const jsonMatch = rawContent.match(/\{[\s\S]*\}/);
+    const jsonStr = jsonMatch ? jsonMatch[0] : rawContent;
+    parsed = JSON.parse(jsonStr);
+  } catch (e) {
+    console.error("[AI] Failed to parse JSON response:", content);
+    throw new Error(`AIのレスポンスをJSONとして解析できませんでした。内容: ${String(content).slice(0, 200)}`);
+  }
 
   // 改善アクションは3点以内に制限
   if (Array.isArray(parsed.preventionActions)) {
@@ -182,11 +159,12 @@ export const incidentsRouter = router({
       const fileKey = `incidents/${ctx.user.id}/${Date.now()}.${ext}`;
       const { url: fileUrl } = await storagePut(fileKey, buffer, input.mimeType);
 
-      // AI解析
+      // AI解析（Base64を直接渡してURLアクセス問題を回避）
       const analysis = await analyzeIncidentWithAI(
         fileUrl,
         input.mimeType,
-        input.reportTypeHint
+        input.reportTypeHint,
+        input.fileBase64
       );
 
       // draft保存
