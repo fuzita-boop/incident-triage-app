@@ -20,9 +20,14 @@ export default function UploadPage() {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const analyzeMutation = trpc.incidents.analyzeAndCreateDraft.useMutation({
-    onSuccess: (incident) => {
-      toast.success("AI解析が完了しました。内容を確認してください。");
-      setLocation(`/incidents/${incident!.id}`);
+    onSuccess: (result) => {
+      if (result.count > 1) {
+        toast.success(`${result.count}件の報告書を検出しました。内容を確認してください。`);
+        setLocation(`/review-group/${result.uploadGroupId}`);
+      } else {
+        toast.success("AI解析が完了しました。内容を確認してください。");
+        setLocation(`/incidents/${result.incident!.id}`);
+      }
     },
     onError: (err) => {
       toast.error(`解析に失敗しました: ${err.message}`);

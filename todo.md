@@ -41,3 +41,11 @@
 ## テスト
 - [x] AI解析ルーターのユニットテスト
 - [x] インシデント保存ルーターのユニットテスト
+
+## 変更: 複数報告書対応
+- [x] サーバー: AIに「何件の報告書が含まれるか」を先に検出させるプロンプトを追加
+- [x] サーバー: 複数件の場合は配列形式でまとめて解析するanalyzeMultipleReportsを実装
+- [x] サーバー: analyzeAndCreateDraftの戻り値を{uploadGroupId,count,incidents,incident}に変更
+- [x] フロントエンド: アップロード後に複数報告書が検出された場合の選択・確認UIを実装
+- [x] フロントエンド: BatchReviewPageを新規作成し/review-group/:uploadGroupIdルートを追加
+- [x] テスト更新（13テスト全パス）

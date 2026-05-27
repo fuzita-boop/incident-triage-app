@@ -61,6 +61,25 @@ export async function createDraftIncident(data: InsertIncident) {
   return getIncidentById(id);
 }
 
+export async function createDraftIncidents(dataList: InsertIncident[]) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const results = [];
+  for (const data of dataList) {
+    const [result] = await db.insert(incidents).values({ ...data, status: "draft" });
+    const id = (result as { insertId: number }).insertId;
+    const incident = await getIncidentById(id);
+    if (incident) results.push(incident);
+  }
+  return results;
+}
+
+export async function getIncidentsByUploadGroup(uploadGroupId: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.select().from(incidents).where(eq(incidents.uploadGroupId, uploadGroupId)).orderBy(asc(incidents.pageIndex));
+}
+
 export async function updateIncident(id: number, data: Partial<InsertIncident>) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");

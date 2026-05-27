@@ -3,15 +3,18 @@ import { z } from "zod";
 import {
   confirmIncident,
   createDraftIncident,
+  createDraftIncidents,
   getDashboardStats,
   getIncidentById,
+  getIncidentsByUploadGroup,
   listIncidents,
   updateIncident,
 } from "../db";
 import { invokeLLM } from "../_core/llm";
 import { storagePut } from "../storage";
 import { notifyOwner } from "../_core/notification";
-import { protectedProcedure, publicProcedure, router } from "../_core/trpc";
+import { protectedProcedure, router } from "../_core/trpc";
+import { nanoid } from "nanoid";
 
 // ─── Impact level helpers ────────────────────────────────────────────────────
 
@@ -23,15 +26,9 @@ function isHighUrgency(impactLevel: ImpactLevel, urgency: string): boolean {
   return highLevels.includes(impactLevel) || urgency === "High";
 }
 
-// ─── AI analysis ─────────────────────────────────────────────────────────────
+// ─── AI analysis helpers ─────────────────────────────────────────────────────
 
-async function analyzeIncidentWithAI(
-  fileUrl: string,
-  mimeType: string,
-  reportTypeHint?: string,
-  fileBase64?: string
-) {
-  const systemPrompt = `あなたは医療・介護現場のインシデント・アクシデント報告書を解析する専門AIです。
+const SYSTEM_PROMPT = `あなたは医療・介護現場のインシデント・アクシデント報告書を解析する専門AIです。
 以下の基準に従って、報告書の内容を正確に構造化JSONとして抽出してください。
 
 【影響度レベル定義】
@@ -59,90 +56,122 @@ async function analyzeIncidentWithAI(
 
 必ずJSONのみを返してください。マークダウンや説明文は不要です。`;
 
-  const userContent: any[] = [
-    {
-      type: "text",
-      text: "以下の報告書を解析し、指定のJSON形式で構造化データを抽出してください。\n必ず以下のJSONスキーマに従って返答してください：\n{\"occurredAt\":\"発生日時\",\"location\":\"発生場所\",\"subjectInitials\":\"対象者イニシャル\",\"summaryWhat\":\"何が起きたか\",\"summaryCause\":\"原因\",\"summaryResult\":\"結果・影響\",\"impactLevel\":\"0|1|2|3a|3b|4|5\",\"urgency\":\"High|Medium|Low\",\"importance\":\"High|Medium|Low\",\"reportType\":\"incident|accident\",\"preventionActions\":[\"改善アクション\"]}\nマークダウンや説明文は一切不要です。JSONのみ返してください。",
-    },
-  ];
+const SINGLE_REPORT_SCHEMA = `{"occurredAt":"発生日時","location":"発生場所","subjectInitials":"対象者イニシャル","summaryWhat":"何が起きたか","summaryCause":"原因","summaryResult":"結果・影響","impactLevel":"0|1|2|3a|3b|4|5","urgency":"High|Medium|Low","importance":"High|Medium|Low","reportType":"incident|accident","preventionActions":["改善アクション"]}`;
 
+const MULTI_REPORT_SCHEMA = `{"reports":[{"occurredAt":"発生日時","location":"発生場所","subjectInitials":"対象者イニシャル","summaryWhat":"何が起きたか","summaryCause":"原因","summaryResult":"結果・影響","impactLevel":"0|1|2|3a|3b|4|5","urgency":"High|Medium|Low","importance":"High|Medium|Low","reportType":"incident|accident","preventionActions":["改善アクション"]}]}`;
+
+function buildMediaContent(mimeType: string, fileBase64: string, fileUrl: string) {
   if (mimeType === "application/pdf") {
-    // PDFはBase64データを直接渡す（file_urlがサポートされない場合のフォールバック）
     if (fileBase64) {
-      userContent.push({
-        type: "image_url",
-        image_url: {
-          url: `data:application/pdf;base64,${fileBase64}`,
-          detail: "high",
-        },
-      });
-    } else {
-      userContent.push({
-        type: "file_url",
-        file_url: { url: fileUrl, mime_type: "application/pdf" },
-      });
+      return { type: "image_url" as const, image_url: { url: `data:application/pdf;base64,${fileBase64}`, detail: "high" as const } };
     }
-  } else {
-    // 画像はBase64データ URLで渡す
-    if (fileBase64) {
-      userContent.push({
-        type: "image_url",
-        image_url: {
-          url: `data:${mimeType};base64,${fileBase64}`,
-          detail: "high",
-        },
-      });
-    } else {
-      userContent.push({
-        type: "image_url",
-        image_url: { url: fileUrl, detail: "high" },
-      });
-    }
+    return { type: "file_url" as const, file_url: { url: fileUrl, mime_type: "application/pdf" as const } };
   }
+  if (fileBase64) {
+    return { type: "image_url" as const, image_url: { url: `data:${mimeType};base64,${fileBase64}`, detail: "high" as const } };
+  }
+  return { type: "image_url" as const, image_url: { url: fileUrl, detail: "high" as const } };
+}
 
+function parseJsonSafe(content: string | unknown): any {
+  const raw = typeof content === "string" ? content : JSON.stringify(content);
+  const jsonMatch = raw.match(/\{[\s\S]*\}/);
+  const jsonStr = jsonMatch ? jsonMatch[0] : raw;
+  return JSON.parse(jsonStr);
+}
+
+function normalizeReport(parsed: any, reportTypeHint?: string): any {
+  if (Array.isArray(parsed.preventionActions)) {
+    parsed.preventionActions = parsed.preventionActions.slice(0, 3);
+  }
+  if (reportTypeHint) parsed.reportType = reportTypeHint;
+  return parsed;
+}
+
+/** Step 1: ファイルに何件の報告書が含まれるか検出する */
+async function detectReportCount(mimeType: string, fileBase64: string, fileUrl: string): Promise<number> {
+  const mediaContent = buildMediaContent(mimeType, fileBase64, fileUrl);
   const response = await invokeLLM({
     messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userContent },
+      { role: "system", content: "あなたは医療・介護現場の書類解析AIです。" },
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "このファイルに含まれる独立した報告書（インシデント・アクシデント報告書）の件数を数えてください。各ページが1件の報告書に対応している場合が多いです。件数のみを整数で返してください。例: 3" },
+          mediaContent as any,
+        ],
+      },
+    ],
+  });
+
+  const content = response?.choices?.[0]?.message?.content;
+  if (!content) return 1;
+  const raw = typeof content === "string" ? content : JSON.stringify(content);
+  const match = raw.match(/\d+/);
+  const count = match ? parseInt(match[0], 10) : 1;
+  return Math.max(1, Math.min(count, 20)); // 1〜20件に制限
+}
+
+/** Step 2a: 単一報告書の解析 */
+async function analyzeSingleReport(mimeType: string, fileBase64: string, fileUrl: string, reportTypeHint?: string): Promise<any> {
+  const mediaContent = buildMediaContent(mimeType, fileBase64, fileUrl);
+  const response = await invokeLLM({
+    messages: [
+      { role: "system", content: SYSTEM_PROMPT },
+      {
+        role: "user",
+        content: [
+          { type: "text", text: `以下の報告書を解析し、指定のJSON形式で構造化データを抽出してください。\n必ず以下のJSONスキーマに従って返答してください：\n${SINGLE_REPORT_SCHEMA}\nマークダウンや説明文は一切不要です。JSONのみ返してください。` },
+          mediaContent as any,
+        ],
+      },
     ],
     response_format: { type: "json_object" },
   });
 
-  if (!response || !response.choices || response.choices.length === 0) {
-    throw new Error("AI response is empty or malformed");
-  }
-  const content = response.choices[0]?.message?.content;
-  if (!content) throw new Error("AI response content is empty");
-
-  let parsed: any;
+  const content = response?.choices?.[0]?.message?.content;
+  if (!content) throw new Error("AI response is empty or malformed");
   try {
-    // マークダウンコードブロックが含まれる場合も考慮
-    const rawContent = typeof content === "string" ? content : JSON.stringify(content);
-    const jsonMatch = rawContent.match(/\{[\s\S]*\}/);
-    const jsonStr = jsonMatch ? jsonMatch[0] : rawContent;
-    parsed = JSON.parse(jsonStr);
+    return normalizeReport(parseJsonSafe(content), reportTypeHint);
   } catch (e) {
-    console.error("[AI] Failed to parse JSON response:", content);
+    console.error("[AI] Failed to parse single report JSON:", content);
     throw new Error(`AIのレスポンスをJSONとして解析できませんでした。内容: ${String(content).slice(0, 200)}`);
   }
+}
 
-  // 改善アクションは3点以内に制限
-  if (Array.isArray(parsed.preventionActions)) {
-    parsed.preventionActions = parsed.preventionActions.slice(0, 3);
+/** Step 2b: 複数報告書の一括解析 */
+async function analyzeMultipleReports(mimeType: string, fileBase64: string, fileUrl: string, count: number, reportTypeHint?: string): Promise<any[]> {
+  const mediaContent = buildMediaContent(mimeType, fileBase64, fileUrl);
+  const response = await invokeLLM({
+    messages: [
+      { role: "system", content: SYSTEM_PROMPT },
+      {
+        role: "user",
+        content: [
+          { type: "text", text: `このファイルには${count}件の報告書が含まれています。各報告書を順番に解析し、以下のJSON配列形式で返してください：\n${MULTI_REPORT_SCHEMA}\n各報告書を1要素として配列に格納してください。マークダウンや説明文は一切不要です。JSONのみ返してください。` },
+          mediaContent as any,
+        ],
+      },
+    ],
+    response_format: { type: "json_object" },
+  });
+
+  const content = response?.choices?.[0]?.message?.content;
+  if (!content) throw new Error("AI response is empty or malformed");
+  try {
+    const parsed = parseJsonSafe(content);
+    const reports: any[] = Array.isArray(parsed.reports) ? parsed.reports : [parsed];
+    return reports.map(r => normalizeReport(r, reportTypeHint));
+  } catch (e) {
+    console.error("[AI] Failed to parse multi report JSON:", content);
+    throw new Error(`AIのレスポンスをJSONとして解析できませんでした。内容: ${String(content).slice(0, 200)}`);
   }
-
-  // 報告種別ヒントがあれば上書き
-  if (reportTypeHint) {
-    parsed.reportType = reportTypeHint;
-  }
-
-  return parsed;
 }
 
 // ─── Router ──────────────────────────────────────────────────────────────────
 
 export const incidentsRouter = router({
-  // ファイルアップロード → AI解析 → draft保存
+  // ファイルアップロード → AI解析 → draft保存（複数報告書対応）
   analyzeAndCreateDraft: protectedProcedure
     .input(
       z.object({
@@ -156,38 +185,78 @@ export const incidentsRouter = router({
       // Base64 → Buffer → S3アップロード
       const buffer = Buffer.from(input.fileBase64, "base64");
       const ext = input.fileName.split(".").pop() ?? "bin";
-      const fileKey = `incidents/${ctx.user.id}/${Date.now()}.${ext}`;
+      const uploadGroupId = nanoid(12);
+      const fileKey = `incidents/${ctx.user.id}/${uploadGroupId}.${ext}`;
       const { url: fileUrl } = await storagePut(fileKey, buffer, input.mimeType);
 
-      // AI解析（Base64を直接渡してURLアクセス問題を回避）
-      const analysis = await analyzeIncidentWithAI(
-        fileUrl,
-        input.mimeType,
-        input.reportTypeHint,
-        input.fileBase64
-      );
+      // Step 1: 件数検出
+      const reportCount = await detectReportCount(input.mimeType, input.fileBase64, fileUrl);
 
-      // draft保存
-      const incident = await createDraftIncident({
-        fileKey,
-        fileUrl,
-        fileMimeType: input.mimeType,
-        occurredAt: analysis.occurredAt,
-        location: analysis.location,
-        subjectInitials: analysis.subjectInitials,
-        summaryWhat: analysis.summaryWhat,
-        summaryCause: analysis.summaryCause,
-        summaryResult: analysis.summaryResult,
-        impactLevel: analysis.impactLevel,
-        urgency: analysis.urgency,
-        importance: analysis.importance,
-        reportType: analysis.reportType,
-        preventionActions: JSON.stringify(analysis.preventionActions),
-        status: "draft",
-        createdByUserId: ctx.user.id,
-      });
+      let drafts;
+      if (reportCount <= 1) {
+        // 単一報告書
+        const analysis = await analyzeSingleReport(input.mimeType, input.fileBase64, fileUrl, input.reportTypeHint);
+        const incident = await createDraftIncident({
+          uploadGroupId,
+          pageIndex: 0,
+          fileKey,
+          fileUrl,
+          fileMimeType: input.mimeType,
+          occurredAt: analysis.occurredAt,
+          location: analysis.location,
+          subjectInitials: analysis.subjectInitials,
+          summaryWhat: analysis.summaryWhat,
+          summaryCause: analysis.summaryCause,
+          summaryResult: analysis.summaryResult,
+          impactLevel: analysis.impactLevel,
+          urgency: analysis.urgency,
+          importance: analysis.importance,
+          reportType: analysis.reportType,
+          preventionActions: JSON.stringify(analysis.preventionActions),
+          status: "draft",
+          createdByUserId: ctx.user.id,
+        });
+        drafts = [incident];
+      } else {
+        // 複数報告書
+        const analyses = await analyzeMultipleReports(input.mimeType, input.fileBase64, fileUrl, reportCount, input.reportTypeHint);
+        const dataList = analyses.map((analysis, idx) => ({
+          uploadGroupId,
+          pageIndex: idx,
+          fileKey,
+          fileUrl,
+          fileMimeType: input.mimeType,
+          occurredAt: analysis.occurredAt,
+          location: analysis.location,
+          subjectInitials: analysis.subjectInitials,
+          summaryWhat: analysis.summaryWhat,
+          summaryCause: analysis.summaryCause,
+          summaryResult: analysis.summaryResult,
+          impactLevel: analysis.impactLevel,
+          urgency: analysis.urgency,
+          importance: analysis.importance,
+          reportType: analysis.reportType,
+          preventionActions: JSON.stringify(analysis.preventionActions),
+          status: "draft" as const,
+          createdByUserId: ctx.user.id,
+        }));
+        drafts = await createDraftIncidents(dataList);
+      }
 
-      return incident;
+      return {
+        uploadGroupId,
+        count: drafts.length,
+        incidents: drafts,
+        // 後方互換: 単一の場合は最初の1件を返す
+        incident: drafts[0] ?? null,
+      };
+    }),
+
+  // アップロードグループ内の全インシデント取得
+  getByUploadGroup: protectedProcedure
+    .input(z.object({ uploadGroupId: z.string() }))
+    .query(async ({ input }) => {
+      return getIncidentsByUploadGroup(input.uploadGroupId);
     }),
 
   // draft更新（管理者が編集）

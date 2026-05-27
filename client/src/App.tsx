@@ -9,6 +9,7 @@ import Dashboard from "./pages/Dashboard";
 import UploadPage from "./pages/UploadPage";
 import IncidentListPage from "./pages/IncidentListPage";
 import IncidentReviewPage from "./pages/IncidentReviewPage";
+import BatchReviewPage from "./pages/BatchReviewPage";
 
 function Router() {
   return (
@@ -18,6 +19,7 @@ function Router() {
         <Route path="/upload" component={UploadPage} />
         <Route path="/incidents" component={IncidentListPage} />
         <Route path="/incidents/:id" component={IncidentReviewPage} />
+        <Route path="/review-group/:uploadGroupId" component={BatchReviewPage} />
         <Route path="/404" component={NotFound} />
         <Route component={NotFound} />
       </Switch>

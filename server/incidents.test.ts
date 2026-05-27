@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { isUrgentIncident } from "../shared/types";
 
 // ── shared/types のロジックテスト ────────────────────────────────────────────
@@ -33,9 +33,11 @@ describe("isUrgentIncident", () => {
 
 vi.mock("./db", () => ({
   createDraftIncident: vi.fn(),
+  createDraftIncidents: vi.fn(),
   updateIncident: vi.fn(),
   confirmIncident: vi.fn(),
   getIncidentById: vi.fn(),
+  getIncidentsByUploadGroup: vi.fn(),
   listIncidents: vi.fn(),
   getDashboardStats: vi.fn(),
   getDb: vi.fn(),
@@ -55,7 +57,15 @@ vi.mock("./_core/notification", () => ({
   notifyOwner: vi.fn().mockResolvedValue(true),
 }));
 
-import { createDraftIncident, confirmIncident, getIncidentById, listIncidents, getDashboardStats } from "./db";
+import {
+  createDraftIncident,
+  createDraftIncidents,
+  confirmIncident,
+  getIncidentById,
+  getIncidentsByUploadGroup,
+  listIncidents,
+  getDashboardStats,
+} from "./db";
 import { invokeLLM } from "./_core/llm";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
@@ -126,30 +136,34 @@ describe("incidents.dashboardStats", () => {
   });
 });
 
-describe("incidents.analyzeAndCreateDraft", () => {
+describe("incidents.analyzeAndCreateDraft (単一報告書)", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("AI解析後にdraftが作成される", async () => {
-    const mockAnalysisResponse = {
-      choices: [{
-        message: {
-          content: JSON.stringify({
-            occurredAt: "2024-01-15 14:30",
-            location: "2階廊下",
-            subjectInitials: "A.T.",
-            summaryWhat: "転倒が発生した",
-            summaryCause: "床が濡れていた",
-            summaryResult: "軽微な擦り傷",
-            impactLevel: "3a",
-            urgency: "Medium",
-            importance: "Medium",
-            reportType: "incident",
-            preventionActions: ["床の清掃徹底", "注意喚起の掲示", "定期巡回の強化"],
-          }),
-        },
-      }],
-    };
-    vi.mocked(invokeLLM).mockResolvedValue(mockAnalysisResponse as any);
+  it("AI解析後に単一draftが作成され、count=1で返る", async () => {
+    // Step1: 件数検出 → "1"
+    // Step2: 単一解析 → JSON
+    vi.mocked(invokeLLM)
+      .mockResolvedValueOnce({ choices: [{ message: { content: "1" } }] } as any)
+      .mockResolvedValueOnce({
+        choices: [{
+          message: {
+            content: JSON.stringify({
+              occurredAt: "2024-01-15 14:30",
+              location: "2階廊下",
+              subjectInitials: "A.T.",
+              summaryWhat: "転倒が発生した",
+              summaryCause: "床が濡れていた",
+              summaryResult: "軽微な擦り傷",
+              impactLevel: "3a",
+              urgency: "Medium",
+              importance: "Medium",
+              reportType: "incident",
+              preventionActions: ["床の清掃徹底", "注意喚起の掲示", "定期巡回の強化"],
+            }),
+          },
+        }],
+      } as any);
+
     vi.mocked(createDraftIncident).mockResolvedValue({
       id: 1,
       status: "draft",
@@ -157,6 +171,8 @@ describe("incidents.analyzeAndCreateDraft", () => {
       urgency: "Medium",
       fileKey: "test-key",
       fileUrl: "/manus-storage/test-key",
+      uploadGroupId: "test-group",
+      pageIndex: 0,
       createdAt: new Date(),
       updatedAt: new Date(),
     } as any);
@@ -169,9 +185,70 @@ describe("incidents.analyzeAndCreateDraft", () => {
       reportTypeHint: "incident",
     });
 
-    expect(createDraftIncident).toHaveBeenCalled();
-    expect(result?.status).toBe("draft");
-    expect(result?.impactLevel).toBe("3a");
+    expect(createDraftIncident).toHaveBeenCalledTimes(1);
+    expect(result.count).toBe(1);
+    expect(result.incident?.status).toBe("draft");
+    expect(result.incident?.impactLevel).toBe("3a");
+  });
+});
+
+describe("incidents.analyzeAndCreateDraft (複数報告書)", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("複数報告書を検出した場合にcreateDraftIncidentsが呼ばれ、count=3で返る", async () => {
+    // Step1: 件数検出 → "3"
+    // Step2: 複数解析 → JSON配列
+    vi.mocked(invokeLLM)
+      .mockResolvedValueOnce({ choices: [{ message: { content: "3" } }] } as any)
+      .mockResolvedValueOnce({
+        choices: [{
+          message: {
+            content: JSON.stringify({
+              reports: [
+                { occurredAt: "2024-01-15", location: "1F", subjectInitials: "A.B.", summaryWhat: "転倒1", summaryCause: "原因1", summaryResult: "結果1", impactLevel: "1", urgency: "Low", importance: "Low", reportType: "incident", preventionActions: ["対策1"] },
+                { occurredAt: "2024-01-16", location: "2F", subjectInitials: "C.D.", summaryWhat: "転倒2", summaryCause: "原因2", summaryResult: "結果2", impactLevel: "2", urgency: "Medium", importance: "Medium", reportType: "incident", preventionActions: ["対策2"] },
+                { occurredAt: "2024-01-17", location: "3F", subjectInitials: "E.F.", summaryWhat: "転倒3", summaryCause: "原因3", summaryResult: "結果3", impactLevel: "3b", urgency: "High", importance: "High", reportType: "accident", preventionActions: ["対策3"] },
+              ],
+            }),
+          },
+        }],
+      } as any);
+
+    const mockDrafts = [
+      { id: 1, status: "draft", impactLevel: "1", urgency: "Low", uploadGroupId: "grp", pageIndex: 0, createdAt: new Date(), updatedAt: new Date() },
+      { id: 2, status: "draft", impactLevel: "2", urgency: "Medium", uploadGroupId: "grp", pageIndex: 1, createdAt: new Date(), updatedAt: new Date() },
+      { id: 3, status: "draft", impactLevel: "3b", urgency: "High", uploadGroupId: "grp", pageIndex: 2, createdAt: new Date(), updatedAt: new Date() },
+    ];
+    vi.mocked(createDraftIncidents).mockResolvedValue(mockDrafts as any);
+
+    const caller = appRouter.createCaller(createAuthContext());
+    const result = await caller.incidents.analyzeAndCreateDraft({
+      fileBase64: Buffer.from("fake-pdf").toString("base64"),
+      fileName: "test.pdf",
+      mimeType: "application/pdf",
+    });
+
+    expect(createDraftIncidents).toHaveBeenCalledTimes(1);
+    expect(result.count).toBe(3);
+    expect(result.incidents).toHaveLength(3);
+    expect(result.incidents[2]?.impactLevel).toBe("3b");
+  });
+});
+
+describe("incidents.getByUploadGroup", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("uploadGroupIdで絞り込んだ一覧を返す", async () => {
+    const mockGroup = [
+      { id: 1, uploadGroupId: "grp-abc", pageIndex: 0, status: "draft", impactLevel: "1", createdAt: new Date(), updatedAt: new Date() },
+      { id: 2, uploadGroupId: "grp-abc", pageIndex: 1, status: "draft", impactLevel: "2", createdAt: new Date(), updatedAt: new Date() },
+    ];
+    vi.mocked(getIncidentsByUploadGroup).mockResolvedValue(mockGroup as any);
+
+    const caller = appRouter.createCaller(createAuthContext());
+    const result = await caller.incidents.getByUploadGroup({ uploadGroupId: "grp-abc" });
+    expect(result).toHaveLength(2);
+    expect(result[0]?.uploadGroupId).toBe("grp-abc");
   });
 });
 

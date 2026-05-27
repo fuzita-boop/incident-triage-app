@@ -35,6 +35,9 @@ export const incidents = mysqlTable("incidents", {
   id: int("id").autoincrement().primaryKey(),
 
   // ── ファイル参照 ──────────────────────────────────────────────────
+  uploadGroupId: varchar("uploadGroupId", { length: 64 }),
+  pageIndex: int("pageIndex").default(0),
+
   fileKey: varchar("fileKey", { length: 512 }),
   fileUrl: varchar("fileUrl", { length: 1024 }),
   fileMimeType: varchar("fileMimeType", { length: 64 }),
