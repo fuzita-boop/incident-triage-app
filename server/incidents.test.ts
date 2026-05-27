@@ -88,7 +88,7 @@ describe("incidents.list", () => {
         impactLevel: "2",
         urgency: "Medium",
         importance: "Low",
-        locationTag: "facility",
+        reportType: "incident",
         status: "confirmed",
         summaryWhat: "転倒",
         location: "2階廊下",
@@ -112,7 +112,7 @@ describe("incidents.dashboardStats", () => {
   it("集計データを返す", async () => {
     vi.mocked(getDashboardStats).mockResolvedValue({
       byImpactLevel: { "0": 2, "2": 1, "3b": 1 },
-      byLocationTag: { facility: 3, visit: 1 },
+      byReportType: { incident: 3, accident: 1 },
       byUrgency: { High: 1, Medium: 2, Low: 1 },
       totalDraft: 2,
       totalConfirmed: 4,
@@ -122,7 +122,7 @@ describe("incidents.dashboardStats", () => {
     const caller = appRouter.createCaller(createAuthContext());
     const result = await caller.incidents.dashboardStats();
     expect(result.totalConfirmed).toBe(4);
-    expect(result.byLocationTag.facility).toBe(3);
+    expect(result.byReportType.incident).toBe(3);
   });
 });
 
@@ -143,7 +143,7 @@ describe("incidents.analyzeAndCreateDraft", () => {
             impactLevel: "3a",
             urgency: "Medium",
             importance: "Medium",
-            locationTag: "facility",
+            reportType: "incident",
             preventionActions: ["床の清掃徹底", "注意喚起の掲示", "定期巡回の強化"],
           }),
         },
@@ -166,7 +166,7 @@ describe("incidents.analyzeAndCreateDraft", () => {
       fileBase64: Buffer.from("fake-image").toString("base64"),
       fileName: "test.jpg",
       mimeType: "image/jpeg",
-      locationTagHint: "facility",
+      reportTypeHint: "incident",
     });
 
     expect(createDraftIncident).toHaveBeenCalled();
@@ -218,7 +218,7 @@ describe("incidents.confirm", () => {
       impactLevel: "2",
       urgency: "Low",
       importance: "Low",
-      locationTag: "facility",
+      reportType: "incident",
       status: "draft",
       summaryWhat: "転倒",
       location: "廊下",

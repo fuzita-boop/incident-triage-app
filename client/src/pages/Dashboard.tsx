@@ -1,9 +1,10 @@
 import { trpc } from "@/lib/trpc";
 import {
   IMPACT_LEVEL_SHORT,
-  LOCATION_TAG_LABELS,
+  REPORT_TYPE_SHORT,
   isUrgentIncident,
   type ImpactLevel,
+  type ReportType,
   type UrgencyLevel,
 } from "../../../shared/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,7 +23,7 @@ import {
   Cell,
   Legend,
 } from "recharts";
-import { AlertTriangle, Building2, CheckCircle2, ClipboardList, FileWarning, MapPin, Plus } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ClipboardList, FileText, FileWarning, Plus, Stethoscope } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const IMPACT_COLORS: Record<string, string> = {
@@ -62,10 +63,10 @@ export default function Dashboard() {
         }))
     : [];
 
-  const locationChartData = stats
+  const reportTypeChartData = stats
     ? [
-        { name: "施設内", value: stats.byLocationTag["facility"] ?? 0 },
-        { name: "訪問", value: stats.byLocationTag["visit"] ?? 0 },
+        { name: "ヒヤリハット", value: stats.byReportType["incident"] ?? 0 },
+        { name: "事故報告書", value: stats.byReportType["accident"] ?? 0 },
       ]
     : [];
 
@@ -108,16 +109,16 @@ export default function Dashboard() {
           color="amber"
         />
         <SummaryCard
-          icon={<Building2 className="h-5 w-5 text-blue-500" />}
-          label="施設内"
-          value={isLoading ? null : stats?.byLocationTag["facility"] ?? 0}
+          icon={<Stethoscope className="h-5 w-5 text-blue-500" />}
+          label="ヒヤリハット"
+          value={isLoading ? null : stats?.byReportType["incident"] ?? 0}
           color="blue"
         />
         <SummaryCard
-          icon={<MapPin className="h-5 w-5 text-emerald-500" />}
-          label="訪問"
-          value={isLoading ? null : stats?.byLocationTag["visit"] ?? 0}
-          color="emerald"
+          icon={<FileText className="h-5 w-5 text-orange-500" />}
+          label="事故報告書"
+          value={isLoading ? null : stats?.byReportType["accident"] ?? 0}
+          color="orange"
         />
       </div>
 
@@ -154,15 +155,15 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        {/* 拠点別 */}
+        {/* 報告種別 */}
         <Card className="shadow-sm border-border/60">
           <CardHeader className="pb-2">
-            <CardTitle className="text-base font-semibold">拠点別内訳</CardTitle>
+            <CardTitle className="text-base font-semibold">報告種別内訳</CardTitle>
           </CardHeader>
           <CardContent>
             {isLoading ? (
               <Skeleton className="h-48 w-full" />
-            ) : locationChartData.every((d) => d.value === 0) ? (
+            ) : reportTypeChartData.every((d) => d.value === 0) ? (
               <div className="h-48 flex items-center justify-center text-muted-foreground text-sm">
                 データがありません
               </div>
@@ -170,7 +171,7 @@ export default function Dashboard() {
               <ResponsiveContainer width="100%" height={200}>
                 <PieChart>
                   <Pie
-                    data={locationChartData}
+                    data={reportTypeChartData}
                     cx="50%"
                     cy="50%"
                     innerRadius={50}
@@ -178,7 +179,7 @@ export default function Dashboard() {
                     paddingAngle={3}
                     dataKey="value"
                   >
-                    {locationChartData.map((_, index) => (
+                    {reportTypeChartData.map((_, index) => (
                       <Cell key={index} fill={PIE_COLORS[index % PIE_COLORS.length]} />
                     ))}
                   </Pie>
@@ -320,7 +321,7 @@ function IncidentRow({
           <Badge className="badge-high text-xs px-2 py-0.5">緊急</Badge>
         )}
         <span className="text-xs text-muted-foreground">
-          {LOCATION_TAG_LABELS[(incident.locationTag ?? "facility") as keyof typeof LOCATION_TAG_LABELS]}
+          {REPORT_TYPE_SHORT[(incident.reportType ?? "incident") as ReportType]}
         </span>
       </div>
     </button>

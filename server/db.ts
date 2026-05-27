@@ -87,7 +87,7 @@ export async function getIncidentById(id: number) {
 
 export type IncidentFilter = {
   status?: "draft" | "confirmed";
-  locationTag?: "facility" | "visit";
+  reportType?: "incident" | "accident";
   impactLevel?: string;
   urgency?: "High" | "Medium" | "Low";
   importance?: "High" | "Medium" | "Low";
@@ -103,7 +103,7 @@ export async function listIncidents(filter: IncidentFilter = {}) {
 
   const conditions = [];
   if (filter.status) conditions.push(eq(incidents.status, filter.status));
-  if (filter.locationTag) conditions.push(eq(incidents.locationTag, filter.locationTag));
+  if (filter.reportType) conditions.push(eq(incidents.reportType, filter.reportType));
   if (filter.impactLevel) conditions.push(eq(incidents.impactLevel, filter.impactLevel as any));
   if (filter.urgency) conditions.push(eq(incidents.urgency, filter.urgency));
   if (filter.importance) conditions.push(eq(incidents.importance, filter.importance));
@@ -129,7 +129,7 @@ export async function getDashboardStats() {
   const all = await db.select().from(incidents).where(eq(incidents.status, "confirmed"));
 
   const byImpactLevel: Record<string, number> = {};
-  const byLocationTag: Record<string, number> = { facility: 0, visit: 0 };
+  const byReportType: Record<string, number> = { incident: 0, accident: 0 };
   const byUrgency: Record<string, number> = { High: 0, Medium: 0, Low: 0 };
   let totalDraft = 0;
   let totalConfirmed = 0;
@@ -137,7 +137,7 @@ export async function getDashboardStats() {
   for (const inc of all) {
     const lvl = inc.impactLevel ?? "0";
     byImpactLevel[lvl] = (byImpactLevel[lvl] ?? 0) + 1;
-    if (inc.locationTag) byLocationTag[inc.locationTag] = (byLocationTag[inc.locationTag] ?? 0) + 1;
+    if (inc.reportType) byReportType[inc.reportType] = (byReportType[inc.reportType] ?? 0) + 1;
     if (inc.urgency) byUrgency[inc.urgency] = (byUrgency[inc.urgency] ?? 0) + 1;
     if (inc.status === "confirmed") totalConfirmed++;
   }
@@ -145,5 +145,5 @@ export async function getDashboardStats() {
   const drafts = await db.select().from(incidents).where(eq(incidents.status, "draft"));
   totalDraft = drafts.length;
 
-  return { byImpactLevel, byLocationTag, byUrgency, totalDraft, totalConfirmed, total: all.length };
+  return { byImpactLevel, byReportType, byUrgency, totalDraft, totalConfirmed, total: all.length };
 }

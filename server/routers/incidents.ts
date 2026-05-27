@@ -169,7 +169,7 @@ export const incidentsRouter = router({
         fileBase64: z.string(),
         fileName: z.string(),
         mimeType: z.string(),
-        locationTagHint: z.enum(["facility", "visit"]).optional(),
+        reportTypeHint: z.enum(["incident", "accident"]).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -183,7 +183,7 @@ export const incidentsRouter = router({
       const analysis = await analyzeIncidentWithAI(
         fileUrl,
         input.mimeType,
-        input.locationTagHint
+        input.reportTypeHint
       );
 
       // draft保存
@@ -200,7 +200,7 @@ export const incidentsRouter = router({
         impactLevel: analysis.impactLevel,
         urgency: analysis.urgency,
         importance: analysis.importance,
-        locationTag: analysis.locationTag,
+        reportType: analysis.reportType,
         preventionActions: JSON.stringify(analysis.preventionActions),
         status: "draft",
         createdByUserId: ctx.user.id,
@@ -274,7 +274,7 @@ export const incidentsRouter = router({
     .input(
       z.object({
         status: z.enum(["draft", "confirmed"]).optional(),
-        locationTag: z.enum(["facility", "visit"]).optional(),
+        reportType: z.enum(["incident", "accident"]).optional(),
         impactLevel: z.string().optional(),
         urgency: z.enum(["High", "Medium", "Low"]).optional(),
         importance: z.enum(["High", "Medium", "Low"]).optional(),

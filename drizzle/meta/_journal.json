@@ -15,6 +15,13 @@
       "when": 1779883373353,
       "tag": "0001_curly_ravenous",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1779885131508,
+      "tag": "0002_wealthy_sally_floyd",
+      "breakpoints": true
     }
   ]
 }

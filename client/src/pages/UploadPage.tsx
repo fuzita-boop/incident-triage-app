@@ -4,10 +4,9 @@ import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Building2, FileImage, FileScan, MapPin, Upload, X } from "lucide-react";
+import { FileImage, FileScan, FileText, Stethoscope, Upload, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-type LocationTag = "facility" | "visit";
+import { REPORT_TYPE_LABELS, type ReportType } from "../../../shared/types";
 
 const MAX_FILE_SIZE = 15 * 1024 * 1024; // 15MB
 const ACCEPTED_TYPES = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
@@ -16,7 +15,7 @@ export default function UploadPage() {
   const [, setLocation] = useLocation();
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
-  const [locationTag, setLocationTag] = useState<LocationTag>("facility");
+  const [reportType, setReportType] = useState<ReportType>("incident");
   const [isDragging, setIsDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -67,7 +66,7 @@ export default function UploadPage() {
         fileBase64: base64,
         fileName: file.name,
         mimeType: file.type,
-        locationTagHint: locationTag,
+        reportTypeHint: reportType,
       });
     };
     reader.readAsDataURL(file);
@@ -90,35 +89,34 @@ export default function UploadPage() {
         </p>
       </div>
 
-      {/* 拠点種別トグル */}
+      {/* 報告種別トグル */}
       <Card className="shadow-sm border-border/60">
         <CardContent className="pt-5 pb-4">
-          <p className="text-sm font-medium mb-3">拠点種別</p>
+          <p className="text-sm font-medium mb-3">報告種別</p>
           <div className="flex gap-2">
-            <button
-              onClick={() => setLocationTag("facility")}
-              className={cn(
-                "flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-lg border-2 text-sm font-medium transition-all",
-                locationTag === "facility"
-                  ? "border-primary bg-primary/5 text-primary"
-                  : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
-              )}
-            >
-              <Building2 className="h-4 w-4" />
-              施設内
-            </button>
-            <button
-              onClick={() => setLocationTag("visit")}
-              className={cn(
-                "flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-lg border-2 text-sm font-medium transition-all",
-                locationTag === "visit"
-                  ? "border-primary bg-primary/5 text-primary"
-                  : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
-              )}
-            >
-              <MapPin className="h-4 w-4" />
-              訪問看護・訪問介護
-            </button>
+            {(["incident", "accident"] as ReportType[]).map((type) => (
+              <button
+                key={type}
+                onClick={() => setReportType(type)}
+                className={cn(
+                  "flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-lg border-2 text-sm font-medium transition-all",
+                  reportType === type
+                    ? type === "incident"
+                      ? "border-blue-500 bg-blue-50 text-blue-700"
+                      : "border-orange-500 bg-orange-50 text-orange-700"
+                    : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                )}
+              >
+                {type === "incident" ? (
+                  <Stethoscope className="h-4 w-4" />
+                ) : (
+                  <FileText className="h-4 w-4" />
+                )}
+                <span className="text-xs leading-tight text-center">
+                  {REPORT_TYPE_LABELS[type]}
+                </span>
+              </button>
+            ))}
           </div>
           <p className="text-xs text-muted-foreground mt-2">
             ※ AIが自動判定しますが、ここで手動設定した場合はその値が優先されます

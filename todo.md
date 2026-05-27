@@ -27,6 +27,17 @@
 - [x] ダッシュボード画面（影響度別・拠点別グラフ）
 - [x] ルーティング設定（App.tsx）
 
+## 変更: 拠点種別→報告種別
+- [x] DBスキーマ: locationTag列を削除し reportType列（incident/accident）を追加してマイグレーション
+- [x] shared/types: LocationTag関連を削除し ReportType型・ラベルを追加
+- [x] サーバーロジック: AI解析プロンプトをreportType判定に変更、フィルタ対応
+- [x] UploadPage: 拠点種別トグルを報告種別トグルに置き換え
+- [x] IncidentReviewPage: 拠点種別フィールドを報告種別フィールドに置き換え
+- [x] IncidentListPage: 拠点種別フィルタを報告種別フィルタに置き換え
+- [x] Dashboard: 拠点別グラフを報告種別グラフに置き換え
+- [x] DashboardLayout: ナビゲーションから拠点種別関連を削除
+- [x] テスト更新
+
 ## テスト
 - [x] AI解析ルーターのユニットテスト
 - [x] インシデント保存ルーターのユニットテスト

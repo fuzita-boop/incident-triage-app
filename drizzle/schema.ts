@@ -28,7 +28,7 @@ export type InsertUser = typeof users.$inferInsert;
 /**
  * 影響度レベル: 0, 1, 2, 3a, 3b, 4, 5
  * 緊急対応性 / 重要度: High, Medium, Low
- * 拠点タグ: facility (施設内), visit (訪問看護・訪問介護)
+ * 報告種別: incident (インシデント/ヒヤリハット), accident (アクシデント/事故報告書)
  * ステータス: draft (AI解析済み・未確定), confirmed (管理者確定済み)
  */
 export const incidents = mysqlTable("incidents", {
@@ -50,7 +50,7 @@ export const incidents = mysqlTable("incidents", {
   impactLevel: mysqlEnum("impactLevel", ["0", "1", "2", "3a", "3b", "4", "5"]).default("0"),
   urgency: mysqlEnum("urgency", ["High", "Medium", "Low"]).default("Low"),
   importance: mysqlEnum("importance", ["High", "Medium", "Low"]).default("Low"),
-  locationTag: mysqlEnum("locationTag", ["facility", "visit"]).default("facility"),
+  reportType: mysqlEnum("reportType", ["incident", "accident"]).default("incident"),
 
   // ── AI提案の改善アクション（JSON配列文字列として保存）────────────
   preventionActions: text("preventionActions"),              // JSON string: string[]

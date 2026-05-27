@@ -14,22 +14,21 @@ import {
 } from "@/components/ui/select";
 import {
   AlertTriangle,
-  Building2,
   CheckCircle2,
   ChevronRight,
   Clock,
+  FileText,
   Filter,
-  MapPin,
   Plus,
+  Stethoscope,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
-  IMPACT_LEVEL_LABELS,
   IMPACT_LEVEL_SHORT,
-  LOCATION_TAG_LABELS,
+  REPORT_TYPE_SHORT,
   isUrgentIncident,
   type ImpactLevel,
-  type LocationTag,
+  type ReportType,
   type UrgencyLevel,
 } from "../../../shared/types";
 
@@ -38,7 +37,7 @@ const URGENCY_JP: Record<string, string> = { High: "高（緊急）", Medium: "�
 export default function IncidentListPage() {
   const [, setLocation] = useLocation();
   const [filterStatus, setFilterStatus] = useState<"all" | "draft" | "confirmed">("all");
-  const [filterLocation, setFilterLocation] = useState<"all" | "facility" | "visit">("all");
+  const [filterReportType, setFilterReportType] = useState<"all" | "incident" | "accident">("all");
   const [filterLevel, setFilterLevel] = useState<"all" | ImpactLevel>("all");
   const [filterUrgency, setFilterUrgency] = useState<"all" | UrgencyLevel>("all");
   const [sortBy, setSortBy] = useState<"createdAt" | "occurredAt">("createdAt");
@@ -46,7 +45,7 @@ export default function IncidentListPage() {
 
   const { data: incidents, isLoading } = trpc.incidents.list.useQuery({
     status: filterStatus === "all" ? undefined : filterStatus,
-    locationTag: filterLocation === "all" ? undefined : filterLocation,
+    reportType: filterReportType === "all" ? undefined : filterReportType,
     impactLevel: filterLevel === "all" ? undefined : filterLevel,
     urgency: filterUrgency === "all" ? undefined : filterUrgency,
     sortBy,
@@ -94,15 +93,15 @@ export default function IncidentListPage() {
               </Select>
             </div>
             <div className="space-y-1">
-              <p className="text-xs text-muted-foreground">拠点種別</p>
-              <Select value={filterLocation} onValueChange={(v) => setFilterLocation(v as any)}>
+              <p className="text-xs text-muted-foreground">報告種別</p>
+              <Select value={filterReportType} onValueChange={(v) => setFilterReportType(v as any)}>
                 <SelectTrigger className="h-8 text-xs">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">すべて</SelectItem>
-                  <SelectItem value="facility">施設内</SelectItem>
-                  <SelectItem value="visit">訪問看護・訪問介護</SelectItem>
+                  <SelectItem value="incident">インシデント（ヒヤリハット）</SelectItem>
+                  <SelectItem value="accident">アクシデント（事故報告書）</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -200,6 +199,7 @@ export default function IncidentListPage() {
               (inc.impactLevel ?? "0") as ImpactLevel,
               (inc.urgency ?? "Low") as UrgencyLevel
             );
+            const rType = (inc.reportType ?? "incident") as ReportType;
             return (
               <button
                 key={inc.id}
@@ -267,13 +267,14 @@ export default function IncidentListPage() {
                         >
                           {URGENCY_JP[inc.urgency ?? "Low"]}
                         </Badge>
+                        {/* 報告種別バッジ */}
                         <span className="hidden sm:flex items-center gap-1 text-xs text-muted-foreground">
-                          {inc.locationTag === "facility" ? (
-                            <Building2 className="h-3 w-3" />
+                          {rType === "incident" ? (
+                            <Stethoscope className="h-3 w-3 text-blue-500" />
                           ) : (
-                            <MapPin className="h-3 w-3" />
+                            <FileText className="h-3 w-3 text-orange-500" />
                           )}
-                          {LOCATION_TAG_LABELS[(inc.locationTag ?? "facility") as LocationTag]}
+                          {REPORT_TYPE_SHORT[rType]}
                         </span>
                         {inc.status === "confirmed" ? (
                           <CheckCircle2 className="h-4 w-4 text-emerald-500" />

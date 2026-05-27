@@ -2,7 +2,7 @@
 
 export type ImpactLevel = "0" | "1" | "2" | "3a" | "3b" | "4" | "5";
 export type UrgencyLevel = "High" | "Medium" | "Low";
-export type LocationTag = "facility" | "visit";
+export type ReportType = "incident" | "accident";
 export type IncidentStatus = "draft" | "confirmed";
 
 export const IMPACT_LEVEL_LABELS: Record<ImpactLevel, string> = {
@@ -31,9 +31,14 @@ export const URGENCY_LABELS: Record<UrgencyLevel, string> = {
   Low: "低",
 };
 
-export const LOCATION_TAG_LABELS: Record<LocationTag, string> = {
-  facility: "施設内",
-  visit: "訪問看護・訪問介護",
+export const REPORT_TYPE_LABELS: Record<ReportType, string> = {
+  incident: "インシデント（ヒヤリハット）",
+  accident: "アクシデント（事故報告書）",
+};
+
+export const REPORT_TYPE_SHORT: Record<ReportType, string> = {
+  incident: "ヒヤリハット",
+  accident: "事故",
 };
 
 export const HIGH_IMPACT_LEVELS: ImpactLevel[] = ["3b", "4", "5"];

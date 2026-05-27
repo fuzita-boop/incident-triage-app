@@ -19,18 +19,18 @@ import { toast } from "sonner";
 import {
   AlertTriangle,
   ArrowLeft,
-  Building2,
   CheckCircle2,
-  MapPin,
+  FileText,
   Sparkles,
+  Stethoscope,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   IMPACT_LEVEL_LABELS,
-  LOCATION_TAG_LABELS,
+  REPORT_TYPE_LABELS,
   isUrgentIncident,
   type ImpactLevel,
-  type LocationTag,
+  type ReportType,
   type UrgencyLevel,
 } from "../../../shared/types";
 
@@ -73,7 +73,7 @@ export default function IncidentReviewPage() {
     impactLevel: "0" as ImpactLevel,
     urgency: "Low" as UrgencyLevel,
     importance: "Low" as UrgencyLevel,
-    locationTag: "facility" as LocationTag,
+    reportType: "incident" as ReportType,
     preventionActions: ["", "", ""] as string[],
   });
 
@@ -96,7 +96,7 @@ export default function IncidentReviewPage() {
         impactLevel: (incident.impactLevel ?? "0") as ImpactLevel,
         urgency: (incident.urgency ?? "Low") as UrgencyLevel,
         importance: (incident.importance ?? "Low") as UrgencyLevel,
-        locationTag: (incident.locationTag ?? "facility") as LocationTag,
+        reportType: (incident.reportType ?? "incident") as ReportType,
         preventionActions: actions,
       });
     }
@@ -107,22 +107,14 @@ export default function IncidentReviewPage() {
 
   const handleSave = () => {
     const actions = form.preventionActions.filter((a) => a.trim() !== "");
-    updateMutation.mutate({
-      id,
-      ...form,
-      preventionActions: actions,
-    });
+    updateMutation.mutate({ id, ...form, preventionActions: actions });
   };
 
   const handleConfirm = () => {
     const actions = form.preventionActions.filter((a) => a.trim() !== "");
     updateMutation.mutate(
       { id, ...form, preventionActions: actions },
-      {
-        onSuccess: () => {
-          confirmMutation.mutate({ id });
-        },
-      }
+      { onSuccess: () => confirmMutation.mutate({ id }) }
     );
   };
 
@@ -165,7 +157,7 @@ export default function IncidentReviewPage() {
         <div className="flex-1">
           <div className="flex items-center gap-3">
             <h1 className="text-xl font-semibold tracking-tight">
-              インシデント #{id} — 確認・編集
+              報告書 #{id} — 確認・編集
             </h1>
             {isConfirmed ? (
               <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 gap-1">
@@ -243,29 +235,33 @@ export default function IncidentReviewPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="pt-4 space-y-4">
-              {/* 拠点種別 */}
+              {/* 報告種別 */}
               <div className="space-y-2">
-                <Label className="text-xs font-medium">拠点種別</Label>
+                <Label className="text-xs font-medium">報告種別</Label>
                 <div className="flex gap-2">
-                  {(["facility", "visit"] as LocationTag[]).map((tag) => (
+                  {(["incident", "accident"] as ReportType[]).map((type) => (
                     <button
-                      key={tag}
+                      key={type}
                       disabled={isConfirmed}
-                      onClick={() => setForm((f) => ({ ...f, locationTag: tag }))}
+                      onClick={() => setForm((f) => ({ ...f, reportType: type }))}
                       className={cn(
-                        "flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg border text-xs font-medium transition-all",
-                        form.locationTag === tag
-                          ? "border-primary bg-primary/5 text-primary"
+                        "flex-1 flex items-center justify-center gap-1.5 py-3 px-4 rounded-lg border-2 text-sm font-medium transition-all",
+                        form.reportType === type
+                          ? type === "incident"
+                            ? "border-blue-500 bg-blue-50 text-blue-700"
+                            : "border-orange-500 bg-orange-50 text-orange-700"
                           : "border-border text-muted-foreground hover:border-primary/40",
                         isConfirmed && "opacity-60 cursor-not-allowed"
                       )}
                     >
-                      {tag === "facility" ? (
-                        <Building2 className="h-3.5 w-3.5" />
+                      {type === "incident" ? (
+                        <Stethoscope className="h-4 w-4" />
                       ) : (
-                        <MapPin className="h-3.5 w-3.5" />
+                        <FileText className="h-4 w-4" />
                       )}
-                      {LOCATION_TAG_LABELS[tag]}
+                      <span className="text-xs leading-tight text-center">
+                        {REPORT_TYPE_LABELS[type]}
+                      </span>
                     </button>
                   ))}
                 </div>
@@ -366,12 +362,8 @@ export default function IncidentReviewPage() {
                   <SelectContent>
                     {IMPACT_LEVELS.map((lvl) => (
                       <SelectItem key={lvl} value={lvl}>
-                        <span className={`inline-flex items-center gap-2`}>
-                          <span
-                            className={cn(
-                              "inline-flex items-center justify-center rounded px-1.5 py-0.5 text-xs font-semibold level-" + lvl
-                            )}
-                          >
+                        <span className="inline-flex items-center gap-2">
+                          <span className={cn("inline-flex items-center justify-center rounded px-1.5 py-0.5 text-xs font-semibold level-" + lvl)}>
                             Lv.{lvl}
                           </span>
                           <span className="text-xs">{IMPACT_LEVEL_LABELS[lvl].split(" — ")[1]}</span>
@@ -380,7 +372,6 @@ export default function IncidentReviewPage() {
                     ))}
                   </SelectContent>
                 </Select>
-                {/* 現在の選択を視覚的に表示 */}
                 <div className={cn("rounded-lg px-3 py-2 text-xs level-" + form.impactLevel)}>
                   {IMPACT_LEVEL_LABELS[form.impactLevel]}
                 </div>
