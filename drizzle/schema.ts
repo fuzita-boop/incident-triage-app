@@ -1,17 +1,15 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import {
+  boolean,
+  int,
+  mysqlEnum,
+  mysqlTable,
+  text,
+  timestamp,
+  varchar,
+} from "drizzle-orm/mysql-core";
 
-/**
- * Core user table backing auth flow.
- * Extend this file with additional tables as your product grows.
- * Columns use camelCase to match both database fields and generated types.
- */
 export const users = mysqlTable("users", {
-  /**
-   * Surrogate primary key. Auto-incremented numeric value managed by the database.
-   * Use this for relations between tables.
-   */
   id: int("id").autoincrement().primaryKey(),
-  /** Manus OAuth identifier (openId) returned from the OAuth callback. Unique per user. */
   openId: varchar("openId", { length: 64 }).notNull().unique(),
   name: text("name"),
   email: varchar("email", { length: 320 }),
@@ -25,4 +23,50 @@ export const users = mysqlTable("users", {
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 
-// TODO: Add your tables here
+// ─── Incident reports ───────────────────────────────────────────────────────
+
+/**
+ * 影響度レベル: 0, 1, 2, 3a, 3b, 4, 5
+ * 緊急対応性 / 重要度: High, Medium, Low
+ * 拠点タグ: facility (施設内), visit (訪問看護・訪問介護)
+ * ステータス: draft (AI解析済み・未確定), confirmed (管理者確定済み)
+ */
+export const incidents = mysqlTable("incidents", {
+  id: int("id").autoincrement().primaryKey(),
+
+  // ── ファイル参照 ──────────────────────────────────────────────────
+  fileKey: varchar("fileKey", { length: 512 }),
+  fileUrl: varchar("fileUrl", { length: 1024 }),
+  fileMimeType: varchar("fileMimeType", { length: 64 }),
+
+  // ── AI解析結果（確定前は draft として保持）────────────────────────
+  occurredAt: varchar("occurredAt", { length: 128 }),      // 発生日時（テキスト）
+  location: varchar("location", { length: 256 }),           // 発生場所
+  subjectInitials: varchar("subjectInitials", { length: 64 }), // 対象者イニシャル
+  summaryWhat: text("summaryWhat"),                          // 事象概要 - 何が
+  summaryCause: text("summaryCause"),                        // 事象概要 - 原因
+  summaryResult: text("summaryResult"),                      // 事象概要 - 結果
+
+  impactLevel: mysqlEnum("impactLevel", ["0", "1", "2", "3a", "3b", "4", "5"]).default("0"),
+  urgency: mysqlEnum("urgency", ["High", "Medium", "Low"]).default("Low"),
+  importance: mysqlEnum("importance", ["High", "Medium", "Low"]).default("Low"),
+  locationTag: mysqlEnum("locationTag", ["facility", "visit"]).default("facility"),
+
+  // ── AI提案の改善アクション（JSON配列文字列として保存）────────────
+  preventionActions: text("preventionActions"),              // JSON string: string[]
+
+  // ── ステータス ────────────────────────────────────────────────────
+  status: mysqlEnum("status", ["draft", "confirmed"]).default("draft").notNull(),
+  isUrgentAlerted: boolean("isUrgentAlerted").default(false),
+
+  // ── 作成者 ────────────────────────────────────────────────────────
+  createdByUserId: int("createdByUserId"),
+  confirmedByUserId: int("confirmedByUserId"),
+
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  confirmedAt: timestamp("confirmedAt"),
+});
+
+export type Incident = typeof incidents.$inferSelect;
+export type InsertIncident = typeof incidents.$inferInsert;
