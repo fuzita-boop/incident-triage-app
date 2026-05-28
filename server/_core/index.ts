@@ -8,6 +8,8 @@ import { registerStorageProxy } from "./storageProxy";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
+import { getIncidentById } from "../db";
+import { generateIncidentPdf } from "../pdfExport";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -36,6 +38,25 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   registerStorageProxy(app);
   registerOAuthRoutes(app);
+
+  // PDF export endpoint
+  app.get("/api/incidents/:id/pdf", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id ?? "", 10);
+      if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+      const incident = await getIncidentById(id);
+      if (!incident) { res.status(404).json({ error: "Incident not found" }); return; }
+      const pdfBuffer = await generateIncidentPdf(incident);
+      const filename = encodeURIComponent(`incident_${id}_${new Date().toISOString().slice(0, 10)}.pdf`);
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${filename}`);
+      res.setHeader("Content-Length", pdfBuffer.length);
+      res.send(pdfBuffer);
+    } catch (err) {
+      console.error("[PDF Export] Error:", err);
+      res.status(500).json({ error: "PDF generation failed" });
+    }
+  });
   // tRPC API
   app.use(
     "/api/trpc",

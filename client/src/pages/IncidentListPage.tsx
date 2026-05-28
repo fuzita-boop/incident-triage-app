@@ -17,6 +17,7 @@ import {
   CheckCircle2,
   ChevronRight,
   Clock,
+  Download,
   FileText,
   Filter,
   Plus,
@@ -280,6 +281,18 @@ export default function IncidentListPage() {
                           <CheckCircle2 className="h-4 w-4 text-emerald-500" />
                         ) : (
                           <Clock className="h-4 w-4 text-amber-500" />
+                        )}
+                        {inc.status === "confirmed" && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              window.open(`/api/incidents/${inc.id}/pdf`, "_blank");
+                            }}
+                            title="PDFダウンロード"
+                            className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                          >
+                            <Download className="h-4 w-4" />
+                          </button>
                         )}
                         <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
                       </div>

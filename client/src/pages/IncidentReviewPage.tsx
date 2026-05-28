@@ -20,6 +20,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   CheckCircle2,
+  Download,
   FileText,
   Lightbulb,
   Plus,
@@ -601,9 +602,19 @@ export default function IncidentReviewPage() {
           )}
 
           {isConfirmed && (
-            <div className="flex items-center gap-2 p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm">
-              <CheckCircle2 className="h-4 w-4 shrink-0" />
-              このインシデントは確定済みです。編集はできません。
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm">
+                <CheckCircle2 className="h-4 w-4 shrink-0" />
+                このインシデントは確定済みです。編集はできません。
+              </div>
+              <Button
+                variant="outline"
+                className="w-full gap-2 border-teal-200 text-teal-700 hover:bg-teal-50"
+                onClick={() => window.open(`/api/incidents/${incident?.id}/pdf`, "_blank")}
+              >
+                <Download className="h-4 w-4" />
+                PDFでダウンロード
+              </Button>
             </div>
           )}
         </div>

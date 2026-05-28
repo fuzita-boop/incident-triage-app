@@ -141,6 +141,40 @@ export async function listIncidents(filter: IncidentFilter = {}) {
   return query;
 }
 
+export async function getMonthlyTrends(months: number = 12) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // 過去N月分の確定済みインシデントを取得
+  const all = await db.select().from(incidents).where(eq(incidents.status, "confirmed"));
+
+  // 月ごとに集計（日本時間ベース）
+  const trendMap: Record<string, { month: string; incident: number; accident: number; total: number }> = {};
+
+  // 過去N月のキーを初期化
+  const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Tokyo" }));
+  for (let i = months - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    const label = `${d.getFullYear()}年${d.getMonth() + 1}月`;
+    trendMap[key] = { month: label, incident: 0, accident: 0, total: 0 };
+  }
+
+  for (const inc of all) {
+    const jst = new Date(new Date(inc.createdAt).toLocaleString("en-US", { timeZone: "Asia/Tokyo" }));
+    const key = `${jst.getFullYear()}-${String(jst.getMonth() + 1).padStart(2, "0")}`;
+    if (!trendMap[key]) continue; // 範囲外はスキップ
+    trendMap[key].total++;
+    if (inc.reportType === "accident") {
+      trendMap[key].accident++;
+    } else {
+      trendMap[key].incident++;
+    }
+  }
+
+  return Object.values(trendMap);
+}
+
 export async function getDashboardStats() {
   const db = await getDb();
   if (!db) throw new Error("Database not available");

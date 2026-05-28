@@ -22,6 +22,9 @@ import {
   Pie,
   Cell,
   Legend,
+  LineChart,
+  Line,
+  CartesianGrid,
 } from "recharts";
 import { AlertTriangle, CheckCircle2, ClipboardList, FileText, FileWarning, Plus, Stethoscope } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -41,6 +44,7 @@ const PIE_COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444"];
 export default function Dashboard() {
   const [, setLocation] = useLocation();
   const { data: stats, isLoading } = trpc.incidents.dashboardStats.useQuery();
+  const { data: monthlyTrends, isLoading: trendsLoading } = trpc.incidents.monthlyTrends.useQuery({ months: 12 });
   const { data: recentIncidents } = trpc.incidents.list.useQuery({
     status: "confirmed",
     limit: 5,
@@ -191,6 +195,76 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* 月次トレンドグラフ */}
+      <Card className="shadow-sm border-border/60">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base font-semibold">月次インシデント件数推移（12ヶ月）</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {trendsLoading ? (
+            <Skeleton className="h-56 w-full" />
+          ) : (monthlyTrends?.every((d) => d.total === 0)) ? (
+            <div className="h-56 flex items-center justify-center text-muted-foreground text-sm">
+              確定済みデータがありません
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={220}>
+              <LineChart
+                data={monthlyTrends}
+                margin={{ top: 8, right: 16, left: -16, bottom: 0 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                <XAxis
+                  dataKey="month"
+                  tick={{ fontSize: 11 }}
+                  tickFormatter={(v: string) => v.replace(/\d{4}年/, "")}
+                />
+                <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                <Tooltip
+                  contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e2e8f0" }}
+                  formatter={(value: number, name: string) => [
+                    value,
+                    name === "incident" ? "ヒヤリハット" : name === "accident" ? "事故報告書" : "合計",
+                  ]}
+                />
+                <Legend
+                  iconType="circle"
+                  iconSize={8}
+                  wrapperStyle={{ fontSize: 12 }}
+                  formatter={(value: string) =>
+                    value === "incident" ? "ヒヤリハット" : value === "accident" ? "事故報告書" : "合計"
+                  }
+                />
+                <Line
+                  type="monotone"
+                  dataKey="incident"
+                  stroke="#3b82f6"
+                  strokeWidth={2}
+                  dot={{ r: 3, fill: "#3b82f6" }}
+                  activeDot={{ r: 5 }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="accident"
+                  stroke="#f97316"
+                  strokeWidth={2}
+                  dot={{ r: 3, fill: "#f97316" }}
+                  activeDot={{ r: 5 }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="total"
+                  stroke="#6b7280"
+                  strokeWidth={1.5}
+                  strokeDasharray="4 3"
+                  dot={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+        </CardContent>
+      </Card>
 
       {/* 下書き一覧 */}
       {(draftIncidents?.length ?? 0) > 0 && (

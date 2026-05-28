@@ -64,3 +64,14 @@
 - [x] DBスキーマ: reportedActions・aiSuggestedActionsカラムをSQLで追加
 - [x] フロントエンド: 確認・編集画面で「報告書記載の対策」と「AI提案再発防止策」を分離表示（追加・削除・編集可能）
 - [x] テスト更新（14テスト全パス）
+
+## 新機能: インシデント詳細PDF出力
+- [x] サーバー: pdfkitでPDF生成エンドポイントを実装（GET /api/incidents/:id/pdf）
+- [x] サーバー: AI提案再発防止策・報告書記載対策・全フィールドを含むPDFレイアウト設計
+- [x] フロントエンド: 一覧画面・詳細画面に「PDFダウンロード」ボタンを追加
+
+## 新機能: 月次トレンドグラフ
+- [x] サーバー: getMonthlyTrends関数をserver/db.tsに追加（日本時間ベース、報告種別分離）
+- [x] サーバー: monthlyTrendsルーターをincidents.tsに追加
+- [x] フロントエンド: Dashboard.tsxにRecharts LineChartで折れ線グラフを追加（ヒヤリハット・事故報告書・合計）
+- [x] テスト更新（15テスト全パス）

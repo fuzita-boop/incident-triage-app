@@ -7,6 +7,7 @@ import {
   getDashboardStats,
   getIncidentById,
   getIncidentsByUploadGroup,
+  getMonthlyTrends,
   listIncidents,
   updateIncident,
 } from "../db";
@@ -447,4 +448,11 @@ export const incidentsRouter = router({
   dashboardStats: protectedProcedure.query(async () => {
     return getDashboardStats();
   }),
+
+  // 月次トレンド
+  monthlyTrends: protectedProcedure
+    .input(z.object({ months: z.number().min(3).max(24).default(12) }).optional())
+    .query(async ({ input }) => {
+      return getMonthlyTrends(input?.months ?? 12);
+    }),
 });
