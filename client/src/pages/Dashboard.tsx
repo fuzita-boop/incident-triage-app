@@ -89,7 +89,7 @@ export default function Dashboard() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">ダッシュボード</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            インシデント報告の集計・分析
+            報告書の集計・分析
           </p>
         </div>
         <Button onClick={() => setLocation("/upload")} className="gap-2 shadow-sm">
@@ -199,7 +199,7 @@ export default function Dashboard() {
       {/* 月次トレンドグラフ */}
       <Card className="shadow-sm border-border/60">
         <CardHeader className="pb-2">
-          <CardTitle className="text-base font-semibold">月次インシデント件数推移（12ヶ月）</CardTitle>
+          <CardTitle className="text-base font-semibold">月次報告件数推移（12ヶ月）</CardTitle>
         </CardHeader>
         <CardContent>
           {trendsLoading ? (
@@ -295,7 +295,7 @@ export default function Dashboard() {
           <div className="flex items-center justify-between">
             <CardTitle className="text-base font-semibold flex items-center gap-2">
               <CheckCircle2 className="h-4 w-4 text-primary" />
-              最近の確定済みインシデント
+              最近の確定済み報告書
             </CardTitle>
             <Button
               variant="ghost"

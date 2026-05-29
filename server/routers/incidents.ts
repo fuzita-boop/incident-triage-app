@@ -4,6 +4,8 @@ import {
   confirmIncident,
   createDraftIncident,
   createDraftIncidents,
+  deleteIncident,
+  deleteIncidentsByUploadGroup,
   getDashboardStats,
   getIncidentById,
   getIncidentsByUploadGroup,
@@ -64,7 +66,12 @@ const SYSTEM_PROMPT = `あなたは医療・介護現場のインシデント・
   - 具体的な行動計画（導入するもの、実施タイミング、担当者など）を含める
   - 5点以上の実践的な提案を行うこと
 
-必ずJSONのみを返してください。マークダウンや説明文は不要です。`;
+必ずJSONのみを返してください。マークダウンや説明文は不要です。
+
+【表記の統一ルール】
+- reportType="incident" の場合: 「インシデント（ヒヤリハット）」のみ使用する。「アクシデント」「事故」等の表記を使用しない。
+- reportType="accident" の場合: 「アクシデント（事故報告書）」のみ使用する。「インシデント」「ヒヤリハット」等の表記を使用しない。
+- aiSuggestedActionsの文中でも、報告種別に対応した表記を必ず遵守すること。`;
 
 const SINGLE_REPORT_SCHEMA = `{
   "occurredAt": "発生日時",
@@ -407,9 +414,10 @@ export const incidentsRouter = router({
         incident.urgency ?? "Low"
       );
       if (needsAlert) {
+        const reportLabel = incident.reportType === "accident" ? "アクシデント（事故報告書）" : "インシデント（ヒヤリハット）";
         await notifyOwner({
-          title: `緊急インシデント確定: レベル${incident.impactLevel}`,
-          content: `緊急対応性: ${incident.urgency}\n場所: ${incident.location ?? "不明"}\n概要: ${incident.summaryWhat ?? ""}`,
+          title: `緊急${reportLabel}確定: レベル${incident.impactLevel}`,
+          content: `報告種別: ${reportLabel}\n緊急対応性: ${incident.urgency}\n場所: ${incident.location ?? "不明"}\n概要: ${incident.summaryWhat ?? ""}`,
         }).catch(() => {});
       }
 
@@ -454,5 +462,23 @@ export const incidentsRouter = router({
     .input(z.object({ months: z.number().min(3).max(24).default(12) }).optional())
     .query(async ({ input }) => {
       return getMonthlyTrends(input?.months ?? 12);
+    }),
+
+  // 単件削除（draft/confirmed両対応）
+  delete: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      const incident = await getIncidentById(input.id);
+      if (!incident) throw new TRPCError({ code: "NOT_FOUND" });
+      await deleteIncident(input.id);
+      return { success: true, id: input.id };
+    }),
+
+  // アップロードグループ全件削除（同一スキャンの複数報告書をまとめて削除）
+  deleteGroup: protectedProcedure
+    .input(z.object({ uploadGroupId: z.string() }))
+    .mutation(async ({ input }) => {
+      await deleteIncidentsByUploadGroup(input.uploadGroupId);
+      return { success: true, uploadGroupId: input.uploadGroupId };
     }),
 });

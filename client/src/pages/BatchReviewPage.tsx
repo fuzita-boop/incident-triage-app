@@ -7,12 +7,23 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   AlertTriangle,
   CheckCircle2,
   ChevronRight,
   FileText,
   Loader2,
   AlertCircle,
+  Trash2,
 } from "lucide-react";
 import {
   IMPACT_LEVEL_LABELS,
@@ -33,6 +44,26 @@ export default function BatchReviewPage() {
 
   const confirmMutation = trpc.incidents.confirm.useMutation();
   const utils = trpc.useUtils();
+  const [deleteTargetId, setDeleteTargetId] = useState<number | null>(null);
+  const [showDeleteGroupDialog, setShowDeleteGroupDialog] = useState(false);
+
+  const deleteMutation = trpc.incidents.delete.useMutation({
+    onSuccess: () => {
+      toast.success("報告書を削除しました");
+      utils.incidents.getByUploadGroup.invalidate({ uploadGroupId: params.uploadGroupId });
+      utils.incidents.list.invalidate();
+    },
+    onError: () => toast.error("削除に失敗しました。もう一度お試しください。"),
+  });
+
+  const deleteGroupMutation = trpc.incidents.deleteGroup.useMutation({
+    onSuccess: () => {
+      toast.success("グループ内の全報告書を削除しました");
+      utils.incidents.list.invalidate();
+      setLocation("/upload");
+    },
+    onError: () => toast.error("削除に失敗しました。もう一度お試しください。"),
+  });
 
   const handleConfirmAll = async () => {
     if (!incidents || incidents.length === 0) return;
@@ -257,9 +288,21 @@ export default function BatchReviewPage() {
                     </Badge>
                   )}
                 </div>
-                <div className="flex items-center justify-end mt-3 text-xs text-primary font-medium gap-1">
-                  詳細を確認・修正
-                  <ChevronRight className="h-3.5 w-3.5" />
+                <div className="flex items-center justify-between mt-3">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDeleteTargetId(incident.id);
+                    }}
+                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-destructive transition-colors p-1 rounded"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    削除
+                  </button>
+                  <span className="flex items-center text-xs text-primary font-medium gap-1">
+                    詳細を確認・修正
+                    <ChevronRight className="h-3.5 w-3.5" />
+                  </span>
                 </div>
               </CardContent>
             </Card>
@@ -269,13 +312,70 @@ export default function BatchReviewPage() {
 
       {/* フッターアクション */}
       <div className="flex justify-between pt-4">
-        <Button variant="outline" onClick={() => setLocation("/upload")}>
-          別のファイルをアップロード
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setLocation("/upload")}>
+            別のファイルをアップロード
+          </Button>
+          <Button
+            variant="outline"
+            className="gap-2 text-destructive border-destructive/30 hover:bg-destructive/5"
+            onClick={() => setShowDeleteGroupDialog(true)}
+          >
+            <Trash2 className="h-4 w-4" />
+            このスキャンをまとめて削除
+          </Button>
+        </div>
         <Button variant="outline" onClick={() => setLocation("/incidents")}>
           一覧に戻る
         </Button>
       </div>
+
+      {/* 単件削除確認ダイアログ */}
+      <AlertDialog open={deleteTargetId !== null} onOpenChange={(open) => { if (!open) setDeleteTargetId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>報告書を削除しますか？</AlertDialogTitle>
+            <AlertDialogDescription>
+              この操作は元に戻せません。報告書が完全に削除されます。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (deleteTargetId !== null) {
+                  deleteMutation.mutate({ id: deleteTargetId });
+                  setDeleteTargetId(null);
+                }
+              }}
+            >
+              削除する
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* グループ全件削除確認ダイアログ */}
+      <AlertDialog open={showDeleteGroupDialog} onOpenChange={setShowDeleteGroupDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>このスキャンの全報告書を削除しますか？</AlertDialogTitle>
+            <AlertDialogDescription>
+              {incidents.length}件の報告書がすべて削除されます。この操作は元に戻せません。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => deleteGroupMutation.mutate({ uploadGroupId: params.uploadGroupId ?? "" })}
+            >
+              すべて削除する
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

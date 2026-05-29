@@ -175,6 +175,18 @@ export async function getMonthlyTrends(months: number = 12) {
   return Object.values(trendMap);
 }
 
+export async function deleteIncident(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(incidents).where(eq(incidents.id, id));
+}
+
+export async function deleteIncidentsByUploadGroup(uploadGroupId: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(incidents).where(eq(incidents.uploadGroupId, uploadGroupId));
+}
+
 export async function getDashboardStats() {
   const db = await getDb();
   if (!db) throw new Error("Database not available");

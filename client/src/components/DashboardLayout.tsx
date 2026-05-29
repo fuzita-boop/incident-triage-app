@@ -30,7 +30,7 @@ import { Button } from "./ui/button";
 const menuItems = [
   { icon: BarChart3, label: "ダッシュボード", path: "/" },
   { icon: Plus, label: "新規報告書登録", path: "/upload" },
-  { icon: ClipboardList, label: "インシデント一覧", path: "/incidents" },
+  { icon: ClipboardList, label: "報告書一覧", path: "/incidents" },
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";

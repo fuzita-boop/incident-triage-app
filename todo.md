@@ -75,3 +75,24 @@
 - [x] サーバー: monthlyTrendsルーターをincidents.tsに追加
 - [x] フロントエンド: Dashboard.tsxにRecharts LineChartで折れ線グラフを追加（ヒヤリハット・事故報告書・合計）
 - [x] テスト更新（15テスト全パス）
+
+## 修正: インシデント/アクシデント区別の統一
+- [x] AIプロンプト: 緊急アラートの文言をreportTypeに応じて切り替え（「インシデント」固定を廃止）
+- [x] server/routers/incidents.ts: notifyOwnerの文言をreportTypeに応じて切り替え
+- [x] server/pdfExport.ts: 緊急アラートバナーの文言をreportTypeに応じて切り替え
+- [x] IncidentReviewPage.tsx: 緊急アラートバナーの「インシデント」→reportTypeに応じたラベルに変更
+- [x] IncidentListPage.tsx: 「インシデント一覧」「件のインシデント」等の表記を中立表現に変更
+- [x] Dashboard.tsx: 「インシデント報告の集計」等の表記を中立表現に変更
+- [x] DashboardLayout.tsx: サイドバーの「インシデント一覧」ラベルを「報告書一覧」に変更
+
+## 新機能: スプラッシュ画面
+- [x] DashboardLayoutSkeleton.tsxをスプラッシュ画面に置き換え（アプリアイコン・タイトル・ローディングアニメーション）
+- [x] client/index.html: iPhoneスプラッシュ画面用metaタグを追加
+
+## 新機能: ファイル削除機能
+- [x] server/db.ts: deleteIncident（単件削除）ヘルパーを追加
+- [x] server/routers/incidents.ts: deleteIncidentルーターを追加（draft/confirmed両対応）
+- [x] IncidentListPage.tsx: 各行に削除ボタンを追加（確認ダイアログ付き）
+- [x] IncidentReviewPage.tsx: 削除ボタンを追加（確認ダイアログ付き）
+- [x] BatchReviewPage.tsx: 各ドラフトカードに削除ボタンを追加（グループ一括削除も対応）
+- [x] テスト更新

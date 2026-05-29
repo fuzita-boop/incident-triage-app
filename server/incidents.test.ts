@@ -40,6 +40,8 @@ vi.mock("./db", () => ({
   getIncidentsByUploadGroup: vi.fn(),
   listIncidents: vi.fn(),
   getDashboardStats: vi.fn(),
+  deleteIncident: vi.fn(),
+  deleteIncidentsByUploadGroup: vi.fn(),
   getDb: vi.fn(),
   upsertUser: vi.fn(),
   getUserByOpenId: vi.fn(),
@@ -71,6 +73,8 @@ import {
   getIncidentsByUploadGroup,
   listIncidents,
   getDashboardStats,
+  deleteIncident,
+  deleteIncidentsByUploadGroup,
 } from "./db";
 import { invokeLLM } from "./_core/llm";
 import { appRouter } from "./routers";
@@ -378,7 +382,7 @@ describe("incidents.confirm", () => {
       reportType: "incident",
       status: "draft",
       summaryWhat: "転倒",
-      location: "廊下",
+      location: "廈下",
       occurredAt: "2024-01-15",
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -390,5 +394,48 @@ describe("incidents.confirm", () => {
     const result = await caller.incidents.confirm({ id: 1 });
     expect(confirmIncident).toHaveBeenCalledWith(1, 1);
     expect(result?.status).toBe("confirmed");
+  });
+});
+
+describe("incidents.delete", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("存在するレコードを削除できる", async () => {
+    const mockIncident = {
+      id: 1,
+      status: "draft",
+      summaryWhat: "転倒",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    vi.mocked(getIncidentById).mockResolvedValue(mockIncident as any);
+    vi.mocked(deleteIncident).mockResolvedValue(undefined);
+
+    const caller = appRouter.createCaller(createAuthContext());
+    const result = await caller.incidents.delete({ id: 1 });
+    expect(deleteIncident).toHaveBeenCalledWith(1);
+    expect(result.success).toBe(true);
+    expect(result.id).toBe(1);
+  });
+
+  it("存在しないIDはNOT_FOUNDエラー", async () => {
+    vi.mocked(getIncidentById).mockResolvedValue(null);
+    const caller = appRouter.createCaller(createAuthContext());
+    await expect(caller.incidents.delete({ id: 999 })).rejects.toThrow();
+    expect(deleteIncident).not.toHaveBeenCalled();
+  });
+});
+
+describe("incidents.deleteGroup", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("グループ内の全レコードを削除できる", async () => {
+    vi.mocked(deleteIncidentsByUploadGroup).mockResolvedValue(undefined);
+
+    const caller = appRouter.createCaller(createAuthContext());
+    const result = await caller.incidents.deleteGroup({ uploadGroupId: "group-abc" });
+    expect(deleteIncidentsByUploadGroup).toHaveBeenCalledWith("group-abc");
+    expect(result.success).toBe(true);
+    expect(result.uploadGroupId).toBe("group-abc");
   });
 });

@@ -13,6 +13,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   AlertTriangle,
   CheckCircle2,
   ChevronRight,
@@ -22,7 +32,9 @@ import {
   Filter,
   Plus,
   Stethoscope,
+  Trash2,
 } from "lucide-react";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
   IMPACT_LEVEL_SHORT,
@@ -37,12 +49,25 @@ const URGENCY_JP: Record<string, string> = { High: "高（緊急）", Medium: "�
 
 export default function IncidentListPage() {
   const [, setLocation] = useLocation();
+  const [deleteTargetId, setDeleteTargetId] = useState<number | null>(null);
   const [filterStatus, setFilterStatus] = useState<"all" | "draft" | "confirmed">("all");
   const [filterReportType, setFilterReportType] = useState<"all" | "incident" | "accident">("all");
   const [filterLevel, setFilterLevel] = useState<"all" | ImpactLevel>("all");
   const [filterUrgency, setFilterUrgency] = useState<"all" | UrgencyLevel>("all");
   const [sortBy, setSortBy] = useState<"createdAt" | "occurredAt">("createdAt");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+
+  const utils = trpc.useUtils();
+  const deleteMutation = trpc.incidents.delete.useMutation({
+    onSuccess: () => {
+      toast.success("報告書を削除しました");
+      utils.incidents.list.invalidate();
+      utils.incidents.dashboardStats.invalidate();
+    },
+    onError: () => {
+      toast.error("削除に失敗しました。もう一度お試しください。");
+    },
+  });
 
   const { data: incidents, isLoading } = trpc.incidents.list.useQuery({
     status: filterStatus === "all" ? undefined : filterStatus,
@@ -59,7 +84,7 @@ export default function IncidentListPage() {
       {/* ヘッダー */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">インシデント一覧</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">報告書一覧</h1>
           <p className="text-sm text-muted-foreground mt-1">
             全報告書の管理・フィルタリング
           </p>
@@ -169,7 +194,7 @@ export default function IncidentListPage() {
       {/* 件数 */}
       {!isLoading && (
         <p className="text-sm text-muted-foreground">
-          {incidents?.length ?? 0} 件のインシデント
+          {incidents?.length ?? 0} 件の報告書
         </p>
       )}
 
@@ -183,7 +208,7 @@ export default function IncidentListPage() {
           <Card className="shadow-sm border-border/60">
             <CardContent className="py-16 text-center">
               <p className="text-muted-foreground text-sm">
-                条件に一致するインシデントがありません
+                条件に一致する報告書がありません
               </p>
               <Button
                 variant="outline"
@@ -294,6 +319,16 @@ export default function IncidentListPage() {
                             <Download className="h-4 w-4" />
                           </button>
                         )}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDeleteTargetId(inc.id);
+                          }}
+                          title="削除"
+                          className="p-1 rounded hover:bg-red-50 transition-colors text-muted-foreground hover:text-red-500"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
                         <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
                       </div>
                     </div>
@@ -304,6 +339,32 @@ export default function IncidentListPage() {
           })
         )}
       </div>
+
+      {/* 削除確認ダイアログ */}
+      <AlertDialog open={deleteTargetId !== null} onOpenChange={(open) => { if (!open) setDeleteTargetId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>報告書を削除しますか？</AlertDialogTitle>
+            <AlertDialogDescription>
+              この操作は元に戻せません。確定済み・未確定どちらの報告書でも完全に削除されます。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (deleteTargetId !== null) {
+                  deleteMutation.mutate({ id: deleteTargetId });
+                  setDeleteTargetId(null);
+                }
+              }}
+            >
+              削除する
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

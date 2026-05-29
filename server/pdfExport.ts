@@ -80,8 +80,9 @@ export async function generateIncidentPdf(incident: Incident): Promise<Buffer> {
 
     // ── ヘッダー ────────────────────────────────────────────────────
     doc.rect(50, 40, PAGE_WIDTH, 60).fill(TEAL);
+    const headerTitle = incident.reportType === "accident" ? "アクシデント報告書" : "インシデント報告書";
     doc.font("Bold").fontSize(18).fillColor("white")
-      .text("インシデント報告書", 65, 52);
+      .text(headerTitle, 65, 52);
     doc.font("Regular").fontSize(10).fillColor("white")
       .text(`AIインシデント管理システム　確定済み報告書　#${incident.id}`, 65, 78);
     doc.moveDown(3);
@@ -100,8 +101,9 @@ export async function generateIncidentPdf(incident: Incident): Promise<Buffer> {
     if (isUrgent) {
       doc.rect(50, doc.y, PAGE_WIDTH, 24).fill("#fef2f2");
       doc.rect(50, doc.y - 24, 4, 24).fill(RED);
+      const alertLabel = isAccident ? "アクシデント（事故）" : "インシデント（ヒヤリハット）";
       doc.font("Bold").fontSize(10).fillColor(RED)
-        .text("⚠ 緊急対応が必要なインシデントです", 60, doc.y - 20);
+        .text(`⚠ 緊急対応が必要な${alertLabel}です`, 60, doc.y - 20);
       doc.moveDown(1.5);
     }
 

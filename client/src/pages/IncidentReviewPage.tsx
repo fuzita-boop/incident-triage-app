@@ -17,6 +17,16 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   AlertTriangle,
   ArrowLeft,
   CheckCircle2,
@@ -70,10 +80,22 @@ export default function IncidentReviewPage() {
 
   const confirmMutation = trpc.incidents.confirm.useMutation({
     onSuccess: () => {
-      toast.success("インシデントを確定しました");
+      toast.success("報告書を確定しました");
       refetch();
     },
     onError: (e) => toast.error(`確定失敗: ${e.message}`),
+  });
+
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const utils = trpc.useUtils();
+  const deleteMutation = trpc.incidents.delete.useMutation({
+    onSuccess: () => {
+      toast.success("報告書を削除しました");
+      utils.incidents.list.invalidate();
+      utils.incidents.dashboardStats.invalidate();
+      setLocation("/incidents");
+    },
+    onError: () => toast.error("削除に失敗しました。もう一度お試しください。"),
   });
 
   // フォーム状態
@@ -205,7 +227,7 @@ export default function IncidentReviewPage() {
           <AlertTriangle className="h-5 w-5 text-red-600 shrink-0 mt-0.5" />
           <div>
             <p className="font-semibold text-red-700 text-sm">
-              🚨 緊急対応が必要なインシデントです
+              🚨 緊急対応が必要な{form.reportType === "accident" ? "アクシデント（事故）" : "インシデント（ヒヤリハット）"}です
             </p>
             <p className="text-xs text-red-600 mt-0.5">
               影響度レベル {form.impactLevel} / 緊急対応性: {URGENCY_LABELS_JP[form.urgency]}
@@ -605,7 +627,7 @@ export default function IncidentReviewPage() {
             <div className="space-y-3">
               <div className="flex items-center gap-2 p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm">
                 <CheckCircle2 className="h-4 w-4 shrink-0" />
-                このインシデントは確定済みです。編集はできません。
+                この報告書は確定済みです。編集はできません。
               </div>
               <Button
                 variant="outline"
@@ -617,8 +639,43 @@ export default function IncidentReviewPage() {
               </Button>
             </div>
           )}
+
+          {/* 削除ボタン */}
+          <div className="pt-2 border-t border-border/40">
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full gap-2 text-destructive border-destructive/30 hover:bg-destructive/5"
+              onClick={() => setShowDeleteDialog(true)}
+              disabled={deleteMutation.isPending}
+            >
+              <Trash2 className="h-4 w-4" />
+              この報告書を削除
+            </Button>
+          </div>
         </div>
       </div>
+
+      {/* 削除確認ダイアログ */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>報告書を削除しますか？</AlertDialogTitle>
+            <AlertDialogDescription>
+              この操作は元に戻せません。確定済み・未確定どちらの報告書でも完全に削除されます。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => deleteMutation.mutate({ id })}
+            >
+              削除する
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
