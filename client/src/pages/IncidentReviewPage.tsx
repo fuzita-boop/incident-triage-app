@@ -143,6 +143,16 @@ export default function IncidentReviewPage() {
   const isUrgent = isUrgentIncident(form.impactLevel, form.urgency);
   const isConfirmed = incident?.status === "confirmed";
 
+  // ホットスポットアラート
+  const { data: hotspots } = trpc.incidents.getHotspots.useQuery(
+    {
+      reportType: form.reportType,
+      location: form.location || undefined,
+      occurredAt: form.occurredAt || undefined,
+    },
+    { enabled: !!(form.location || form.occurredAt) }
+  );
+
   const handleSave = () => {
     updateMutation.mutate({
       id,
@@ -235,6 +245,28 @@ export default function IncidentReviewPage() {
               — 即時の医療処置・家族連絡・行政報告を確認してください
             </p>
           </div>
+        </div>
+      )}
+
+      {/* ホットスポットアラートバナー */}
+      {hotspots && (hotspots.locationAlert || hotspots.timeAlert) && (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 space-y-2">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
+            <p className="text-sm font-semibold text-amber-800">⚠️ 発生パターンアラート</p>
+          </div>
+          {hotspots.locationAlert && (
+            <p className="text-xs text-amber-700 ml-6">
+              📍 <strong>{hotspots.locationAlert.location}</strong> での同種別事例が全体の
+              <strong> {Math.round((hotspots.locationAlert.count / hotspots.locationAlert.totalCases) * 100)}%
+              </strong>（{hotspots.locationAlert.count}件 / {hotspots.locationAlert.totalCases}件）を占めています。この場所はリスク集中エリアです。
+            </p>
+          )}
+          {hotspots.timeAlert && (
+            <p className="text-xs text-amber-700 ml-6">
+              ⏰ <strong>{hotspots.timeAlert.hour}台の時間帯</strong>に同種別事例が集中しています（{hotspots.timeAlert.count}件 / {hotspots.timeAlert.totalCases}件）。この時間帯は要注意です。
+            </p>
+          )}
         </div>
       )}
 
@@ -601,6 +633,7 @@ export default function IncidentReviewPage() {
             summaryCause={form.summaryCause}
             summaryResult={form.summaryResult}
             location={form.location}
+            occurredAt={form.occurredAt}
           />
 
           {/* アクションボタン */}

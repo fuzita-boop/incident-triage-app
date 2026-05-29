@@ -41,6 +41,7 @@ vi.mock("./db", () => ({
   listIncidents: vi.fn(),
   getDashboardStats: vi.fn(),
   getIncidentAnalysisData: vi.fn(),
+  getHotspots: vi.fn(),
   deleteIncident: vi.fn(),
   deleteIncidentsByUploadGroup: vi.fn(),
   countIncidentsByFileKey: vi.fn(),
@@ -591,5 +592,43 @@ describe("incidents.getFishbone", () => {
     });
     expect(result.effect).toBe("転倒");
     expect(result.categories).toHaveLength(0);
+  });
+});
+
+describe("incidents.getHotspots", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("場所・時間帯のホットスポットデータを返す", async () => {
+    const { getHotspots } = await import("./db");
+    const mockResult = {
+      locationAlert: { location: "デイルーム", count: 5, totalCases: 10 },
+      timeAlert: { hour: "10:00", count: 4, totalCases: 10 },
+    };
+    vi.mocked(getHotspots).mockResolvedValue(mockResult);
+
+    const caller = appRouter.createCaller(createAuthContext());
+    const result = await caller.incidents.getHotspots({
+      reportType: "incident",
+      location: "デイルーム",
+      occurredAt: "10:30",
+    });
+
+    expect(getHotspots).toHaveBeenCalledWith("incident", "デイルーム", "10:30");
+    expect(result.locationAlert?.location).toBe("デイルーム");
+    expect(result.locationAlert?.count).toBe(5);
+    expect(result.timeAlert?.hour).toBe("10:00");
+  });
+
+  it("ホットスポットなしの場合はnullを返す", async () => {
+    const { getHotspots } = await import("./db");
+    vi.mocked(getHotspots).mockResolvedValue({ locationAlert: null, timeAlert: null });
+
+    const caller = appRouter.createCaller(createAuthContext());
+    const result = await caller.incidents.getHotspots({
+      reportType: "accident",
+    });
+
+    expect(result.locationAlert).toBeNull();
+    expect(result.timeAlert).toBeNull();
   });
 });

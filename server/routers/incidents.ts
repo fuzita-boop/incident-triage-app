@@ -8,6 +8,7 @@ import {
   deleteIncident,
   deleteIncidentsByUploadGroup,
   getDashboardStats,
+  getHotspots,
   getIncidentAnalysisData,
   getIncidentById,
   getIncidentsByUploadGroup,
@@ -544,6 +545,19 @@ export const incidentsRouter = router({
       } catch {
         return { effect: input.summaryWhat, categories: [] };
       }
+    }),
+
+  // ホットスポット検出
+  getHotspots: protectedProcedure
+    .input(
+      z.object({
+        reportType: z.enum(["incident", "accident"]),
+        location: z.string().optional(),
+        occurredAt: z.string().optional(),
+      })
+    )
+    .query(async ({ input }) => {
+      return getHotspots(input.reportType, input.location, input.occurredAt);
     }),
 
   // 月次トレンド

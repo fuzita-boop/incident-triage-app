@@ -23,14 +23,27 @@ import {
   AlertCircle,
 } from "lucide-react";
 import type { ReportType } from "../../../shared/types";
+import FishboneSvg from "./FishboneSvg";
 
 // ─── 色定数 ──────────────────────────────────────────────────────────────────
 const CHART_COLORS = ["#6366f1", "#8b5cf6", "#a78bfa", "#c4b5fd", "#ddd6fe", "#ede9fe", "#f5f3ff", "#faf5ff"];
 const CAUSE_COLORS = ["#ef4444", "#f97316", "#eab308", "#22c55e", "#3b82f6", "#8b5cf6", "#ec4899", "#14b8a6", "#f59e0b", "#64748b"];
 
 // ─── 発生パターン分析 ─────────────────────────────────────────────────────────
-function PatternAnalysis({ reportType }: { reportType: ReportType }) {
+function PatternAnalysis({
+  reportType,
+  location,
+  occurredAt,
+}: {
+  reportType: ReportType;
+  location?: string;
+  occurredAt?: string;
+}) {
   const { data, isLoading, error } = trpc.incidents.getAnalysis.useQuery({ reportType });
+  const { data: hotspots } = trpc.incidents.getHotspots.useQuery(
+    { reportType, location, occurredAt },
+    { enabled: !!(location || occurredAt) }
+  );
 
   if (isLoading) return <AnalysisSkeleton />;
   if (error || !data) return <ErrorState message="データの取得に失敗しました" />;
@@ -49,6 +62,25 @@ function PatternAnalysis({ reportType }: { reportType: ReportType }) {
       <p className="text-xs text-muted-foreground">
         同種別の確定済み事例 <strong>{data.totalSimilarCases}件</strong> を集計した発生パターンです。
       </p>
+
+      {/* ホットスポットアラート */}
+      {hotspots && (hotspots.locationAlert || hotspots.timeAlert) && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-700 p-3 space-y-1.5">
+          <p className="text-xs font-semibold text-amber-800 dark:text-amber-400 flex items-center gap-1">
+            ⚠️ リスク集中エリア検出
+          </p>
+          {hotspots.locationAlert && (
+            <p className="text-xs text-amber-700 dark:text-amber-500">
+              📍 <strong>{hotspots.locationAlert.location}</strong> での同種別事例が全体の <strong>{Math.round((hotspots.locationAlert.count / hotspots.locationAlert.totalCases) * 100)}%</strong>（{hotspots.locationAlert.count}件/{hotspots.locationAlert.totalCases}件）を占めています。要注意エリアです。
+            </p>
+          )}
+          {hotspots.timeAlert && (
+            <p className="text-xs text-amber-700 dark:text-amber-500">
+              ⏰ <strong>{hotspots.timeAlert.hour}台の時間帯</strong>に同種別事例が集中しています（{hotspots.timeAlert.count}件/{hotspots.timeAlert.totalCases}件）。この時間帯は要注意です。
+            </p>
+          )}
+        </div>
+      )}
 
       {/* 場所別 */}
       {data.topLocations.length > 0 && (
@@ -205,37 +237,39 @@ function FishboneAnalysis({ incidentId, summaryWhat, summaryCause, summaryResult
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 gap-3">
-        {fishbone.categories.map((cat) => {
-          const color = CATEGORY_COLORS[cat.name] ?? "#6366f1";
-          return (
-            <div key={cat.name} className="rounded-lg border border-border/60 overflow-hidden">
-              <div
-                className="px-3 py-1.5 text-xs font-semibold text-white"
-                style={{ backgroundColor: color }}
-              >
-                {cat.name}
+      {/* SVGフィッシュボーン図 */}
+      {fishbone.categories.length > 0 && (
+        <FishboneSvg data={fishbone} />
+      )}
+
+      {/* 各カテゴリーの詳細リスト */}
+      <div className="space-y-2">
+        <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">各カテゴリーの詳細</p>
+        <div className="grid grid-cols-1 gap-2">
+          {fishbone.categories.map((cat, idx) => {
+            const COLORS = ["#ef4444","#f97316","#3b82f6","#22c55e","#8b5cf6"];
+            const color = COLORS[idx] ?? "#6366f1";
+            return (
+              <div key={cat.name} className="rounded-lg border border-border/60 overflow-hidden">
+                <div className="px-3 py-1.5 text-xs font-semibold text-white" style={{ backgroundColor: color }}>
+                  {cat.name}
+                </div>
+                <div className="px-3 py-2 space-y-1 bg-card">
+                  {cat.causes.length === 0 ? (
+                    <p className="text-xs text-muted-foreground italic">該当なし</p>
+                  ) : (
+                    cat.causes.map((cause, i) => (
+                      <div key={i} className="flex items-start gap-2">
+                        <span className="mt-0.5 h-4 w-4 rounded-full text-white text-[9px] flex items-center justify-center shrink-0 font-bold" style={{ backgroundColor: color }}>{i + 1}</span>
+                        <p className="text-xs text-foreground/80 leading-relaxed">{cause}</p>
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
-              <div className="px-3 py-2 space-y-1.5 bg-card">
-                {cat.causes.length === 0 ? (
-                  <p className="text-xs text-muted-foreground italic">該当なし</p>
-                ) : (
-                  cat.causes.map((cause, i) => (
-                    <div key={i} className="flex items-start gap-2">
-                      <span
-                        className="mt-0.5 h-4 w-4 rounded-full text-white text-[9px] flex items-center justify-center shrink-0 font-bold"
-                        style={{ backgroundColor: color }}
-                      >
-                        {i + 1}
-                      </span>
-                      <p className="text-xs text-foreground/80 leading-relaxed">{cause}</p>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -340,6 +374,7 @@ interface ShellAnalysisPanelProps {
   summaryCause?: string;
   summaryResult?: string;
   location?: string;
+  occurredAt?: string;
 }
 
 export default function ShellAnalysisPanel({
@@ -349,6 +384,7 @@ export default function ShellAnalysisPanel({
   summaryCause,
   summaryResult,
   location,
+  occurredAt,
 }: ShellAnalysisPanelProps) {
   return (
     <Card className="shadow-sm border-indigo-200/60 bg-indigo-50/20 dark:bg-indigo-950/10 dark:border-indigo-800/30">
@@ -384,7 +420,7 @@ export default function ShellAnalysisPanel({
           </TabsList>
 
           <TabsContent value="pattern" className="mt-4">
-            <PatternAnalysis reportType={reportType} />
+            <PatternAnalysis reportType={reportType} location={location} occurredAt={occurredAt} />
           </TabsContent>
 
           <TabsContent value="fishbone" className="mt-4">

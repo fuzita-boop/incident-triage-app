@@ -320,3 +320,64 @@ export async function getIncidentAnalysisData(reportType: "incident" | "accident
     topCauses,
   };
 }
+
+/**
+ * ホットスポット検出: 特定の場所・時間帯で事例が集中しているか判定する。
+ * 同種別の確定済み事例から集中度スコアを計算し、閾値を超えた場合にアラートを返す。
+ */
+export async function getHotspots(
+  reportType: "incident" | "accident",
+  location?: string | null,
+  occurredAt?: string | null
+): Promise<{
+  locationAlert: { location: string; count: number; totalCases: number } | null;
+  timeAlert: { hour: string; count: number; totalCases: number } | null;
+}> {
+  const db = await getDb();
+  if (!db) return { locationAlert: null, timeAlert: null };
+
+  const all = await db
+    .select()
+    .from(incidents)
+    .where(and(eq(incidents.status, "confirmed"), eq(incidents.reportType, reportType)));
+
+  const totalCases = all.length;
+  if (totalCases < 3) return { locationAlert: null, timeAlert: null };
+
+  // ── 場所ホットスポット ────────────────────────────────────────────────────
+  let locationAlert: { location: string; count: number; totalCases: number } | null = null;
+  if (location && location.trim()) {
+    const locNorm = location.trim().slice(0, 20);
+    const locCount = all.filter(
+      (inc) => (inc.location ?? "").trim().slice(0, 20) === locNorm
+    ).length;
+    // 全体の25%以上かつ2件以上の場合にアラート
+    if (locCount >= 2 && locCount / totalCases >= 0.25) {
+      locationAlert = { location: locNorm, count: locCount, totalCases };
+    }
+  }
+
+  // ── 時間帯ホットスポット ──────────────────────────────────────────────────
+  let timeAlert: { hour: string; count: number; totalCases: number } | null = null;
+  if (occurredAt) {
+    const hourMatch = occurredAt.match(/(\d{1,2})[:時]/);
+    const hour = hourMatch ? parseInt(hourMatch[1], 10) : null;
+    if (hour !== null && hour >= 0 && hour <= 23) {
+      const slot = `${String(hour).padStart(2, "0")}:00`;
+      // ±1時間の範囲で集計
+      const slotCount = all.filter((inc) => {
+        const raw = inc.occurredAt ?? "";
+        const m = raw.match(/(\d{1,2})[:時]/);
+        if (!m) return false;
+        const h = parseInt(m[1], 10);
+        return Math.abs(h - hour) <= 1;
+      }).length;
+      // 全体の30%以上かつ2件以上の場合にアラート
+      if (slotCount >= 2 && slotCount / totalCases >= 0.30) {
+        timeAlert = { hour: slot, count: slotCount, totalCases };
+      }
+    }
+  }
+
+  return { locationAlert, timeAlert };
+}

@@ -116,3 +116,17 @@
 - [x] client/src/components/ShellAnalysisPanel.tsx: シェル分析パネルコンポーネントを新規作成（発生パターン・フィッシュボーン・統計的要因の3タブ）
 - [x] client/src/pages/IncidentReviewPage.tsx: ShellAnalysisPanelをAI提案セクションの直後に挿入
 - [x] server/incidents.test.ts: getAnalysis/getFishbone テストを追加（25件全通過）
+
+## 機能追加: フィッシュボーン図SVG可視化
+- [x] ShellAnalysisPanel.tsx: フィッシュボーンカード一覧をSVGベースの特性要因図に置き換え
+
+## 機能追加: シェル分析のPDF出力組み込み
+- [x] server/pdfExport.ts: フィッシュボーン分析・統計的要因分析をPDFに追加
+- [x] server/_core/index.ts: PDF生成エンドポイントでシェル分析データを並行取得して渡す
+
+## 機能追加: 発生パターンのアラート機能
+- [x] server/db.ts: getHotspots ヘルパーを追加（場所・時間帯の集中度スコア計算）
+- [x] server/routers/incidents.ts: incidents.getHotspots プロシージャを追加
+- [x] ShellAnalysisPanel.tsx: 発生パターンタブにホットスポットアラートバッジを表示
+- [x] IncidentReviewPage.tsx: 報告書の場所・時間帯がホットスポットの場合に警告バナーを表示
+- [x] server/incidents.test.ts: getHotspotsテストを追加（27件全通過）

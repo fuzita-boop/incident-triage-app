@@ -37,10 +37,28 @@ function formatDate(d: Date | null | undefined): string {
   return new Date(d).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" });
 }
 
+export interface FishboneData {
+  effect: string;
+  categories: { name: string; causes: string[] }[];
+}
+
+export interface AnalysisData {
+  totalSimilarCases: number;
+  topLocations: { name: string; count: number }[];
+  hourlyPattern: { hour: string; count: number }[];
+  byImpactLevel: Record<string, number>;
+  topCauses: { keyword: string; count: number }[];
+}
+
+export interface PdfShellAnalysis {
+  fishbone?: FishboneData | null;
+  analysis?: AnalysisData | null;
+}
+
 /**
  * インシデント詳細PDFを生成してBufferで返す
  */
-export async function generateIncidentPdf(incident: Incident): Promise<Buffer> {
+export async function generateIncidentPdf(incident: Incident, shellAnalysis?: PdfShellAnalysis): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({
       size: "A4",
@@ -187,6 +205,81 @@ export async function generateIncidentPdf(incident: Incident): Promise<Buffer> {
         doc.font("Regular").fontSize(10).fillColor("#111827")
           .text(aiActions[i]!, 76, y, { width: PAGE_WIDTH - 26 });
         doc.moveDown(0.5);
+      }
+    }
+
+    // ── シェル分析: フィッシュボーン分析 ────────────────────────────
+    const fishbone = shellAnalysis?.fishbone;
+    if (fishbone && fishbone.categories.length > 0) {
+      sectionTitle("シェル分析: フィッシュボーン図（5M特性要因図）");
+      doc.font("Regular").fontSize(9).fillColor(GRAY)
+        .text("人・手順・機械設備・環境・管理の5M視点で構造化した原因分析です。", 50, doc.y, { width: PAGE_WIDTH });
+      doc.moveDown(0.3);
+
+      // effect
+      const effY = doc.y;
+      doc.rect(50, effY, PAGE_WIDTH, 18).fill("#1e293b");
+      doc.font("Bold").fontSize(10).fillColor("white")
+        .text(`事象: ${fishbone.effect}`, 56, effY + 3, { width: PAGE_WIDTH - 12 });
+      doc.moveDown(0.8);
+
+      const CAT_COLORS: Record<string, string> = {
+        "人（Man）": "#ef4444",
+        "手順（Method）": "#f97316",
+        "機械・設備（Machine）": "#3b82f6",
+        "環境（Milieu）": "#22c55e",
+        "管理（Management）": "#8b5cf6",
+      };
+
+      for (const cat of fishbone.categories) {
+        const catColor = CAT_COLORS[cat.name] ?? "#6366f1";
+        const catY = doc.y;
+        // ページ残量チェック
+        if (catY > doc.page.height - 120) doc.addPage();
+        doc.rect(50, doc.y, PAGE_WIDTH, 16).fill(catColor);
+        doc.font("Bold").fontSize(9).fillColor("white")
+          .text(cat.name, 56, doc.y - 13, { width: PAGE_WIDTH - 12 });
+        doc.moveDown(0.3);
+        for (const cause of cat.causes) {
+          const cY = doc.y;
+          doc.circle(62, cY + 4, 2).fill(catColor);
+          doc.font("Regular").fontSize(9).fillColor("#111827")
+            .text(cause, 70, cY, { width: PAGE_WIDTH - 20 });
+          doc.moveDown(0.2);
+        }
+        doc.moveDown(0.3);
+      }
+    }
+
+    // ── シェル分析: 統計的要因分析 ────────────────────────────
+    const analysis = shellAnalysis?.analysis;
+    if (analysis && analysis.totalSimilarCases > 0) {
+      if (doc.y > doc.page.height - 160) doc.addPage();
+      sectionTitle("シェル分析: 統計的要因分析");
+      doc.font("Regular").fontSize(9).fillColor(GRAY)
+        .text(`同種別の確定済み事例 ${analysis.totalSimilarCases}件に基づく頃出原因キーワード分析です。`, 50, doc.y, { width: PAGE_WIDTH });
+      doc.moveDown(0.5);
+
+      if (analysis.topCauses.length > 0) {
+        const maxCount = analysis.topCauses[0]?.count ?? 1;
+        for (let i = 0; i < Math.min(analysis.topCauses.length, 8); i++) {
+          const item = analysis.topCauses[i]!;
+          const barW = Math.round((item.count / maxCount) * (PAGE_WIDTH - 120));
+          const rowY = doc.y;
+          if (rowY > doc.page.height - 60) doc.addPage();
+          // ランク番号
+          doc.font("Bold").fontSize(9).fillColor(TEAL)
+            .text(String(i + 1), 50, rowY, { width: 16, align: "right" });
+          // キーワード
+          doc.font("Regular").fontSize(9).fillColor("#111827")
+            .text(item.keyword, 72, rowY, { width: 80 });
+          // バー
+          doc.rect(158, rowY + 1, barW, 10).fill(TEAL);
+          // 件数
+          doc.font("Bold").fontSize(8).fillColor(TEAL)
+            .text(`${item.count}件`, 162 + barW, rowY + 1, { width: 30 });
+          doc.moveDown(0.6);
+        }
       }
     }
 

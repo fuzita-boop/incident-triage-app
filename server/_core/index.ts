@@ -8,8 +8,9 @@ import { registerStorageProxy } from "./storageProxy";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
-import { getIncidentById } from "../db";
+import { getIncidentById, getIncidentAnalysisData } from "../db";
 import { generateIncidentPdf } from "../pdfExport";
+import { invokeLLM } from "./llm";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -46,7 +47,64 @@ async function startServer() {
       if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
       const incident = await getIncidentById(id);
       if (!incident) { res.status(404).json({ error: "Incident not found" }); return; }
-      const pdfBuffer = await generateIncidentPdf(incident);
+
+      // シェル分析データを並行取得（失敗しても PDF 生成は続行）
+      const reportType = (incident.reportType ?? "incident") as "incident" | "accident";
+      const [analysis, fishbone] = await Promise.allSettled([
+        getIncidentAnalysisData(reportType),
+        (async () => {
+          if (!incident.summaryWhat) return null;
+          const reportLabel = reportType === "accident" ? "アクシデント（事故報告書）" : "インシデント（ヒヤリハット）";
+          const resp = await invokeLLM({
+            messages: [
+              {
+                role: "system",
+                content: `あなたは医療・介護現場のリスクマネジメント専門家です。以下の${reportLabel}報告書の内容を分析し、フィッシュボーン図（特性要因図）として構造化してください。5カテゴリー（人/手順/機械・設備/環境/管理）で分類し、必ずJSONのみを返してください。`,
+              },
+              {
+                role: "user",
+                content: `事象: ${incident.summaryWhat}\n原因: ${incident.summaryCause ?? "不明"}\n結果: ${incident.summaryResult ?? "不明"}\n発生場所: ${incident.location ?? "不明"}`,
+              },
+            ],
+            response_format: {
+              type: "json_schema",
+              json_schema: {
+                name: "fishbone_analysis",
+                strict: true,
+                schema: {
+                  type: "object",
+                  properties: {
+                    effect: { type: "string" },
+                    categories: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: {
+                          name: { type: "string" },
+                          causes: { type: "array", items: { type: "string" } },
+                        },
+                        required: ["name", "causes"],
+                        additionalProperties: false,
+                      },
+                    },
+                  },
+                  required: ["effect", "categories"],
+                  additionalProperties: false,
+                },
+              },
+            },
+          });
+          const content = (resp.choices[0]?.message?.content ?? "{}") as string;
+          try { return JSON.parse(content); } catch { return null; }
+        })(),
+      ]);
+
+      const shellAnalysis = {
+        analysis: analysis.status === "fulfilled" ? analysis.value : null,
+        fishbone: fishbone.status === "fulfilled" ? fishbone.value : null,
+      };
+
+      const pdfBuffer = await generateIncidentPdf(incident, shellAnalysis);
       const filename = encodeURIComponent(`incident_${id}_${new Date().toISOString().slice(0, 10)}.pdf`);
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${filename}`);
