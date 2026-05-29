@@ -2,6 +2,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import {
   confirmIncident,
+  countIncidentsByFileKey,
   createDraftIncident,
   createDraftIncidents,
   deleteIncident,
@@ -14,7 +15,7 @@ import {
   updateIncident,
 } from "../db";
 import { invokeLLM } from "../_core/llm";
-import { storagePut } from "../storage";
+import { storagePut, storageDelete } from "../storage";
 import { notifyOwner } from "../_core/notification";
 import { protectedProcedure, router } from "../_core/trpc";
 import { nanoid } from "nanoid";
@@ -446,6 +447,9 @@ export const incidentsRouter = router({
         sortOrder: z.enum(["asc", "desc"]).default("desc"),
         limit: z.number().min(1).max(200).default(50),
         offset: z.number().min(0).default(0),
+        keyword: z.string().optional(),
+        dateFrom: z.string().optional(),
+        dateTo: z.string().optional(),
       })
     )
     .query(async ({ input }) => {
@@ -470,7 +474,21 @@ export const incidentsRouter = router({
     .mutation(async ({ input }) => {
       const incident = await getIncidentById(input.id);
       if (!incident) throw new TRPCError({ code: "NOT_FOUND" });
+
+      // fileKey を保存してからレコード削除
+      const fileKey = incident.fileKey;
       await deleteIncident(input.id);
+
+      // 同じ fileKey を参照する他のレコードがなければ実ファイルも削除
+      if (fileKey) {
+        const remaining = await countIncidentsByFileKey(fileKey);
+        if (remaining === 0) {
+          await storageDelete(fileKey).catch((e) =>
+            console.warn("[Storage] File delete failed (non-fatal):", e)
+          );
+        }
+      }
+
       return { success: true, id: input.id };
     }),
 
@@ -478,7 +496,23 @@ export const incidentsRouter = router({
   deleteGroup: protectedProcedure
     .input(z.object({ uploadGroupId: z.string() }))
     .mutation(async ({ input }) => {
+      // 削除前にグループ内のファイルキーを収集
+      const groupIncidents = await getIncidentsByUploadGroup(input.uploadGroupId);
+      const fileKeys = Array.from(new Set(groupIncidents.map((i) => i.fileKey).filter(Boolean))) as string[];
+
+      // DBレコードを先に削除
       await deleteIncidentsByUploadGroup(input.uploadGroupId);
+
+      // 各 fileKey について他のレコードがなければ実ファイルも削除
+      for (const key of fileKeys) {
+        const remaining = await countIncidentsByFileKey(key);
+        if (remaining === 0) {
+          await storageDelete(key).catch((e) =>
+            console.warn("[Storage] File delete failed (non-fatal):", e)
+          );
+        }
+      }
+
       return { success: true, uploadGroupId: input.uploadGroupId };
     }),
 });

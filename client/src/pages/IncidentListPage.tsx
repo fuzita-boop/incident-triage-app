@@ -22,6 +22,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Input } from "@/components/ui/input";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -31,8 +32,10 @@ import {
   FileText,
   Filter,
   Plus,
+  Search,
   Stethoscope,
   Trash2,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -56,6 +59,10 @@ export default function IncidentListPage() {
   const [filterUrgency, setFilterUrgency] = useState<"all" | UrgencyLevel>("all");
   const [sortBy, setSortBy] = useState<"createdAt" | "occurredAt">("createdAt");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+  const [keyword, setKeyword] = useState("");
+  const [keywordInput, setKeywordInput] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
   const utils = trpc.useUtils();
   const deleteMutation = trpc.incidents.delete.useMutation({
@@ -76,6 +83,9 @@ export default function IncidentListPage() {
     urgency: filterUrgency === "all" ? undefined : filterUrgency,
     sortBy,
     sortOrder,
+    keyword: keyword || undefined,
+    dateFrom: dateFrom || undefined,
+    dateTo: dateTo || undefined,
     limit: 100,
   });
 
@@ -92,6 +102,38 @@ export default function IncidentListPage() {
         <Button onClick={() => setLocation("/upload")} className="gap-2 shadow-sm">
           <Plus className="h-4 w-4" />
           新規登録
+        </Button>
+      </div>
+
+      {/* 検索バー */}
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+          <Input
+            className="pl-9 pr-9 h-9 text-sm"
+            placeholder="キーワードで検索（事象概要・場所・対象者イニシャルなど）"
+            value={keywordInput}
+            onChange={(e) => setKeywordInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") setKeyword(keywordInput);
+            }}
+          />
+          {keywordInput && (
+            <button
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              onClick={() => { setKeywordInput(""); setKeyword(""); }}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-9 px-4 text-sm"
+          onClick={() => setKeyword(keywordInput)}
+        >
+          検索
         </Button>
       </div>
 
@@ -162,6 +204,28 @@ export default function IncidentListPage() {
               </Select>
             </div>
           </div>
+          {/* 発生日時範囲 */}
+          <div className="grid grid-cols-2 gap-3 mt-3">
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">発生日時（開始）</p>
+              <Input
+                type="date"
+                className="h-8 text-xs"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">発生日時（終了）</p>
+              <Input
+                type="date"
+                className="h-8 text-xs"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+              />
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-3 mt-3">
             <div className="space-y-1">
               <p className="text-xs text-muted-foreground">並び替え</p>
@@ -191,11 +255,36 @@ export default function IncidentListPage() {
         </CardContent>
       </Card>
 
-      {/* 件数 */}
+      {/* 件数・検索中表示 */}
       {!isLoading && (
-        <p className="text-sm text-muted-foreground">
-          {incidents?.length ?? 0} 件の報告書
-        </p>
+        <div className="flex items-center gap-3">
+          <p className="text-sm text-muted-foreground">
+            {incidents?.length ?? 0} 件の報告書
+          </p>
+          {keyword && (
+            <span className="inline-flex items-center gap-1 text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+              <Search className="h-3 w-3" />
+              「{keyword}」で検索中
+              <button
+                onClick={() => { setKeyword(""); setKeywordInput(""); }}
+                className="ml-1 hover:text-primary/70"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          )}
+          {(dateFrom || dateTo) && (
+            <span className="inline-flex items-center gap-1 text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+              {dateFrom && dateTo ? `${dateFrom} 〜 ${dateTo}` : dateFrom ? `${dateFrom} 以降` : `${dateTo} 以前`}
+              <button
+                onClick={() => { setDateFrom(""); setDateTo(""); }}
+                className="ml-1 hover:text-primary/70"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          )}
+        </div>
       )}
 
       {/* 一覧 */}

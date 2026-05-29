@@ -42,6 +42,7 @@ vi.mock("./db", () => ({
   getDashboardStats: vi.fn(),
   deleteIncident: vi.fn(),
   deleteIncidentsByUploadGroup: vi.fn(),
+  countIncidentsByFileKey: vi.fn(),
   getDb: vi.fn(),
   upsertUser: vi.fn(),
   getUserByOpenId: vi.fn(),
@@ -53,6 +54,7 @@ vi.mock("./_core/llm", () => ({
 
 vi.mock("./storage", () => ({
   storagePut: vi.fn().mockResolvedValue({ key: "test-key", url: "/manus-storage/test-key" }),
+  storageDelete: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("./_core/notification", () => ({
@@ -75,7 +77,9 @@ import {
   getDashboardStats,
   deleteIncident,
   deleteIncidentsByUploadGroup,
+  countIncidentsByFileKey,
 } from "./db";
+import { storageDelete } from "./storage";
 import { invokeLLM } from "./_core/llm";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
@@ -400,11 +404,12 @@ describe("incidents.confirm", () => {
 describe("incidents.delete", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("存在するレコードを削除できる", async () => {
+  it("存在するレコードを削除できる（fileKeyなし）", async () => {
     const mockIncident = {
       id: 1,
       status: "draft",
       summaryWhat: "転倒",
+      fileKey: null,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -414,8 +419,52 @@ describe("incidents.delete", () => {
     const caller = appRouter.createCaller(createAuthContext());
     const result = await caller.incidents.delete({ id: 1 });
     expect(deleteIncident).toHaveBeenCalledWith(1);
+    expect(storageDelete).not.toHaveBeenCalled();
     expect(result.success).toBe(true);
     expect(result.id).toBe(1);
+  });
+
+  it("最後の参照の場合は実ファイルも削除する", async () => {
+    const mockIncident = {
+      id: 2,
+      status: "confirmed",
+      summaryWhat: "転倒",
+      fileKey: "uploads/scan_abc.jpg",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    vi.mocked(getIncidentById).mockResolvedValue(mockIncident as any);
+    vi.mocked(deleteIncident).mockResolvedValue(undefined);
+    // 削除後は参照レコードが0件
+    vi.mocked(countIncidentsByFileKey).mockResolvedValue(0);
+
+    const caller = appRouter.createCaller(createAuthContext());
+    const result = await caller.incidents.delete({ id: 2 });
+    expect(deleteIncident).toHaveBeenCalledWith(2);
+    expect(countIncidentsByFileKey).toHaveBeenCalledWith("uploads/scan_abc.jpg");
+    expect(storageDelete).toHaveBeenCalledWith("uploads/scan_abc.jpg");
+    expect(result.success).toBe(true);
+  });
+
+  it("他に参照レコードがある場合は実ファイルを削除しない", async () => {
+    const mockIncident = {
+      id: 3,
+      status: "draft",
+      summaryWhat: "転倒",
+      fileKey: "uploads/shared_scan.jpg",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    vi.mocked(getIncidentById).mockResolvedValue(mockIncident as any);
+    vi.mocked(deleteIncident).mockResolvedValue(undefined);
+    // 削除後もまだ他のレコードが参照中
+    vi.mocked(countIncidentsByFileKey).mockResolvedValue(2);
+
+    const caller = appRouter.createCaller(createAuthContext());
+    await caller.incidents.delete({ id: 3 });
+    expect(deleteIncident).toHaveBeenCalledWith(3);
+    expect(countIncidentsByFileKey).toHaveBeenCalledWith("uploads/shared_scan.jpg");
+    expect(storageDelete).not.toHaveBeenCalled();
   });
 
   it("存在しないIDはNOT_FOUNDエラー", async () => {
@@ -429,13 +478,33 @@ describe("incidents.delete", () => {
 describe("incidents.deleteGroup", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("グループ内の全レコードを削除できる", async () => {
+  it("グループ内の全レコードを削除し、最後の参照fileKeyの実ファイルも削除する", async () => {
+    const groupIncidents = [
+      { id: 10, fileKey: "uploads/scan_grp.jpg" },
+      { id: 11, fileKey: "uploads/scan_grp.jpg" },
+    ];
+    vi.mocked(getIncidentsByUploadGroup).mockResolvedValue(groupIncidents as any);
     vi.mocked(deleteIncidentsByUploadGroup).mockResolvedValue(undefined);
+    // グループ削除後は参照レコードが0件
+    vi.mocked(countIncidentsByFileKey).mockResolvedValue(0);
 
     const caller = appRouter.createCaller(createAuthContext());
     const result = await caller.incidents.deleteGroup({ uploadGroupId: "group-abc" });
     expect(deleteIncidentsByUploadGroup).toHaveBeenCalledWith("group-abc");
+    expect(storageDelete).toHaveBeenCalledWith("uploads/scan_grp.jpg");
     expect(result.success).toBe(true);
     expect(result.uploadGroupId).toBe("group-abc");
+  });
+
+  it("共有fileKeyが他グループで使われている場合は実ファイルを削除しない", async () => {
+    const groupIncidents = [{ id: 20, fileKey: "uploads/shared.jpg" }];
+    vi.mocked(getIncidentsByUploadGroup).mockResolvedValue(groupIncidents as any);
+    vi.mocked(deleteIncidentsByUploadGroup).mockResolvedValue(undefined);
+    // 他グループからまだ参照あり
+    vi.mocked(countIncidentsByFileKey).mockResolvedValue(3);
+
+    const caller = appRouter.createCaller(createAuthContext());
+    await caller.incidents.deleteGroup({ uploadGroupId: "group-xyz" });
+    expect(storageDelete).not.toHaveBeenCalled();
   });
 });

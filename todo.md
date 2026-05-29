@@ -96,3 +96,14 @@
 - [x] IncidentReviewPage.tsx: 削除ボタンを追加（確認ダイアログ付き）
 - [x] BatchReviewPage.tsx: 各ドラフトカードに削除ボタンを追加（グループ一括削除も対応）
 - [x] テスト更新
+
+## 機能追加: 削除時のストレージファイル実体削除
+- [x] server/storage.ts: storageDelete ヘルパーを追加（Forge API経由でS3ファイル削除）
+- [x] server/db.ts: getIncidentsByFileKey ヘルパーを追加（同一fileKeyを参照する件数確認）
+- [x] server/routers/incidents.ts: delete/deleteGroup でfileKeyの参照カウントを確認し最後の参照なら実ファイルも削除
+- [x] server/incidents.test.ts: ストレージ削除テストを追加
+
+## 機能追加: 報告書キーワード・日付範囲検索
+- [x] server/db.ts: listIncidents に keyword/dateFrom/dateTo フィルターを追加
+- [x] server/routers/incidents.ts: list プロシージャに keyword/dateFrom/dateTo を追加
+- [x] IncidentListPage.tsx: 検索バーと日付フィルターUIを追加

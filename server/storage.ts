@@ -76,6 +76,26 @@ export async function storageGet(relKey: string): Promise<{ key: string; url: st
   return { key, url: `/manus-storage/${key}` };
 }
 
+export async function storageDelete(relKey: string): Promise<void> {
+  const { forgeUrl, forgeKey } = getForgeConfig();
+  const key = normalizeKey(relKey);
+
+  const deleteUrl = new URL("v1/storage/delete", forgeUrl + "/");
+  deleteUrl.searchParams.set("path", key);
+
+  const resp = await fetch(deleteUrl, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${forgeKey}` },
+  });
+
+  // 404 is acceptable (file already gone)
+  if (!resp.ok && resp.status !== 404) {
+    const msg = await resp.text().catch(() => resp.statusText);
+    console.warn(`[Storage] Delete failed for key "${key}" (${resp.status}): ${msg}`);
+    // Non-fatal: log and continue so DB record deletion still succeeds
+  }
+}
+
 export async function storageGetSignedUrl(relKey: string): Promise<string> {
   const { forgeUrl, forgeKey } = getForgeConfig();
   const key = normalizeKey(relKey);

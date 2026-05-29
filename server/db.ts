@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, like, or, gte, lte, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { incidents, InsertIncident, InsertUser, users } from "../drizzle/schema";
 import { ENV } from "./_core/env";
@@ -114,6 +114,12 @@ export type IncidentFilter = {
   sortOrder?: "asc" | "desc";
   limit?: number;
   offset?: number;
+  /** キーワード検索: summaryWhat / summaryCause / location / subjectInitials をLIKE検索 */
+  keyword?: string;
+  /** 発生日時の開始日（YYYY-MM-DD） */
+  dateFrom?: string;
+  /** 発生日時の終了日（YYYY-MM-DD） */
+  dateTo?: string;
 };
 
 export async function listIncidents(filter: IncidentFilter = {}) {
@@ -126,6 +132,24 @@ export async function listIncidents(filter: IncidentFilter = {}) {
   if (filter.impactLevel) conditions.push(eq(incidents.impactLevel, filter.impactLevel as any));
   if (filter.urgency) conditions.push(eq(incidents.urgency, filter.urgency));
   if (filter.importance) conditions.push(eq(incidents.importance, filter.importance));
+  if (filter.keyword) {
+    const kw = `%${filter.keyword}%`;
+    conditions.push(
+      or(
+        like(incidents.summaryWhat, kw),
+        like(incidents.summaryCause, kw),
+        like(incidents.location, kw),
+        like(incidents.subjectInitials, kw),
+        like(incidents.summaryResult, kw),
+      )!
+    );
+  }
+  if (filter.dateFrom) {
+    conditions.push(gte(incidents.occurredAt, filter.dateFrom));
+  }
+  if (filter.dateTo) {
+    conditions.push(lte(incidents.occurredAt, filter.dateTo + "\uffff"));
+  }
 
   const sortCol = filter.sortBy === "occurredAt" ? incidents.occurredAt : incidents.createdAt;
   const orderFn = filter.sortOrder === "asc" ? asc : desc;
@@ -179,6 +203,14 @@ export async function deleteIncident(id: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await db.delete(incidents).where(eq(incidents.id, id));
+}
+
+/** 同じ fileKey を持つ残存レコード数を返す（削除前の参照カウント確認用） */
+export async function countIncidentsByFileKey(fileKey: string): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const rows = await db.select().from(incidents).where(eq(incidents.fileKey, fileKey));
+  return rows.length;
 }
 
 export async function deleteIncidentsByUploadGroup(uploadGroupId: string) {
