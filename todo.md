@@ -107,3 +107,12 @@
 - [x] server/db.ts: listIncidents に keyword/dateFrom/dateTo フィルターを追加
 - [x] server/routers/incidents.ts: list プロシージャに keyword/dateFrom/dateTo を追加
 - [x] IncidentListPage.tsx: 検索バーと日付フィルターUIを追加
+
+## 機能追加: AI提案セクションへのシェル分析追加
+- [x] server/db.ts: getIncidentAnalysisData ヘルパー（場所別・時間帯別・レベル別・原因キーワード集計）を追加
+- [x] server/routers/incidents.ts: incidents.getAnalysis プロシージャを追加（同一reportTypeの過去データ集計）
+- [x] server/routers/incidents.ts: incidents.getFishbone プロシージャを追加（AIによる5Mフィッシュボーン分析）
+- [x] client: recharts をインストール
+- [x] client/src/components/ShellAnalysisPanel.tsx: シェル分析パネルコンポーネントを新規作成（発生パターン・フィッシュボーン・統計的要因の3タブ）
+- [x] client/src/pages/IncidentReviewPage.tsx: ShellAnalysisPanelをAI提案セクションの直後に挿入
+- [x] server/incidents.test.ts: getAnalysis/getFishbone テストを追加（25件全通過）

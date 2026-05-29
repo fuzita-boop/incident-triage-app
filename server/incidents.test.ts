@@ -40,6 +40,7 @@ vi.mock("./db", () => ({
   getIncidentsByUploadGroup: vi.fn(),
   listIncidents: vi.fn(),
   getDashboardStats: vi.fn(),
+  getIncidentAnalysisData: vi.fn(),
   deleteIncident: vi.fn(),
   deleteIncidentsByUploadGroup: vi.fn(),
   countIncidentsByFileKey: vi.fn(),
@@ -75,6 +76,7 @@ import {
   getIncidentsByUploadGroup,
   listIncidents,
   getDashboardStats,
+  getIncidentAnalysisData,
   deleteIncident,
   deleteIncidentsByUploadGroup,
   countIncidentsByFileKey,
@@ -506,5 +508,88 @@ describe("incidents.deleteGroup", () => {
     const caller = appRouter.createCaller(createAuthContext());
     await caller.incidents.deleteGroup({ uploadGroupId: "group-xyz" });
     expect(storageDelete).not.toHaveBeenCalled();
+  });
+});
+
+describe("incidents.getAnalysis", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("同一reportTypeの集計データを返す", async () => {
+    const mockData = {
+      totalSimilarCases: 10,
+      topLocations: [{ name: "デイルーム", count: 5 }],
+      hourlyPattern: [{ hour: "10:00", count: 3 }],
+      byImpactLevel: { "1": 4, "2": 3, "3a": 3 },
+      topCauses: [{ keyword: "確認不足", count: 6 }],
+    };
+    vi.mocked(getIncidentAnalysisData).mockResolvedValue(mockData);
+
+    const caller = appRouter.createCaller(createAuthContext());
+    const result = await caller.incidents.getAnalysis({ reportType: "incident" });
+    expect(getIncidentAnalysisData).toHaveBeenCalledWith("incident");
+    expect(result.totalSimilarCases).toBe(10);
+    expect(result.topLocations[0].name).toBe("デイルーム");
+    expect(result.topCauses[0].keyword).toBe("確認不足");
+  });
+
+  it("accident種別でも正しく呼び出す", async () => {
+    const mockData = {
+      totalSimilarCases: 3,
+      topLocations: [],
+      hourlyPattern: [],
+      byImpactLevel: { "3b": 2, "4": 1 },
+      topCauses: [],
+    };
+    vi.mocked(getIncidentAnalysisData).mockResolvedValue(mockData);
+
+    const caller = appRouter.createCaller(createAuthContext());
+    const result = await caller.incidents.getAnalysis({ reportType: "accident" });
+    expect(getIncidentAnalysisData).toHaveBeenCalledWith("accident");
+    expect(result.totalSimilarCases).toBe(3);
+  });
+});
+
+describe("incidents.getFishbone", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("AIがフィッシュボーン分析JSONを返す", async () => {
+    const mockFishbone = {
+      effect: "転倒による打傷",
+      categories: [
+        { name: "人（Man）", causes: ["確認不足", "疲労"] },
+        { name: "環境（Milieu）", causes: ["床の高さ"] },
+      ],
+    };
+    vi.mocked(invokeLLM).mockResolvedValue({
+      choices: [{ message: { content: JSON.stringify(mockFishbone) } }],
+    } as any);
+
+    const caller = appRouter.createCaller(createAuthContext());
+    const result = await caller.incidents.getFishbone({
+      id: 1,
+      summaryWhat: "転倒した",
+      summaryCause: "確認不足",
+      summaryResult: "打傷",
+      location: "デイルーム",
+      reportType: "accident",
+    });
+    expect(result.effect).toBe("転倒による打傷");
+    expect(result.categories).toHaveLength(2);
+    expect(result.categories[0].name).toBe("人（Man）");
+  });
+
+  it("AIが無効JSONを返した場合はフォールバックする", async () => {
+    vi.mocked(invokeLLM).mockResolvedValue({
+      choices: [{ message: { content: "invalid json" } }],
+    } as any);
+
+    const caller = appRouter.createCaller(createAuthContext());
+    const result = await caller.incidents.getFishbone({
+      id: 2,
+      summaryWhat: "転倒",
+      reportType: "incident",
+    });
+    expect(result.effect).toBe("転倒");
+    expect(result.categories).toHaveLength(0);
   });
 });

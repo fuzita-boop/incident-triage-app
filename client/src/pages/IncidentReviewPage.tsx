@@ -38,6 +38,7 @@ import {
   Stethoscope,
   Trash2,
 } from "lucide-react";
+import ShellAnalysisPanel from "@/components/ShellAnalysisPanel";
 import { cn } from "@/lib/utils";
 import {
   IMPACT_LEVEL_LABELS,
@@ -591,6 +592,16 @@ export default function IncidentReviewPage() {
               )}
             </CardContent>
           </Card>
+
+          {/* シェル分析 */}
+          <ShellAnalysisPanel
+            incidentId={id}
+            reportType={form.reportType}
+            summaryWhat={form.summaryWhat}
+            summaryCause={form.summaryCause}
+            summaryResult={form.summaryResult}
+            location={form.location}
+          />
 
           {/* アクションボタン */}
           {!isConfirmed && (

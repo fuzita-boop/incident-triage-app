@@ -8,6 +8,7 @@ import {
   deleteIncident,
   deleteIncidentsByUploadGroup,
   getDashboardStats,
+  getIncidentAnalysisData,
   getIncidentById,
   getIncidentsByUploadGroup,
   getMonthlyTrends,
@@ -460,6 +461,90 @@ export const incidentsRouter = router({
   dashboardStats: protectedProcedure.query(async () => {
     return getDashboardStats();
   }),
+
+  // シェル分析: 同一報告種別の過去データ集計（発生パターン・統計的要因分析用）
+  getAnalysis: protectedProcedure
+    .input(z.object({ reportType: z.enum(["incident", "accident"]) }))
+    .query(async ({ input }) => {
+      return getIncidentAnalysisData(input.reportType);
+    }),
+
+  // シェル分析: AIによるフィッシュボーン分析（報告書内容から原因を構造化）
+  getFishbone: protectedProcedure
+    .input(
+      z.object({
+        id: z.number(),
+        summaryWhat: z.string(),
+        summaryCause: z.string().optional(),
+        summaryResult: z.string().optional(),
+        location: z.string().optional(),
+        reportType: z.enum(["incident", "accident"]),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const reportLabel = input.reportType === "accident" ? "アクシデント（事故報告書）" : "インシデント（ヒヤリハット）";
+      const response = await invokeLLM({
+        messages: [
+          {
+            role: "system",
+            content: `あなたは医療・介護現場のリスクマネジメント専門家です。以下の${reportLabel}報告書の内容を分析し、フィッシュボーン図（特性要因図）として構造化してください。
+
+以下の5カテゴリーで分類してください：
+- 「人（Man）」: スタッフの知識・技術・判断・疲労・コミュニケーションに関する要因
+- 「手順（Method）」: マニュアル・プロトコル・確認手順の不備・不実行
+- 「機械・設備（Machine）」: 設備・用具・環境の問題
+- 「環境（Milieu）」: 物理的環境・場所・時間帯の要因
+- 「管理（Management）」: 組織的・システム的な問題
+
+必ずJSONのみを返してください。マークダウン不要。`,
+          },
+          {
+            role: "user",
+            content: `事象: ${input.summaryWhat}
+原因: ${input.summaryCause ?? "不明"}
+結果: ${input.summaryResult ?? "不明"}
+発生場所: ${input.location ?? "不明"}`,
+          },
+        ],
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "fishbone_analysis",
+            strict: true,
+            schema: {
+              type: "object",
+              properties: {
+                effect: { type: "string", description: "結果（魚の頭）に記載する事象の簡潔な説明" },
+                categories: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      name: { type: "string", description: "カテゴリー名（人/手順/機械・設備/環境/管理）" },
+                      causes: { type: "array", items: { type: "string" }, description: "そのカテゴリーの要因リスト（2〜4点）" },
+                    },
+                    required: ["name", "causes"],
+                    additionalProperties: false,
+                  },
+                },
+              },
+              required: ["effect", "categories"],
+              additionalProperties: false,
+            },
+          },
+        },
+      });
+
+      const content = (response.choices[0]?.message?.content ?? "{}") as string;
+      try {
+        return JSON.parse(content) as {
+          effect: string;
+          categories: { name: string; causes: string[] }[];
+        };
+      } catch {
+        return { effect: input.summaryWhat, categories: [] };
+      }
+    }),
 
   // 月次トレンド
   monthlyTrends: protectedProcedure

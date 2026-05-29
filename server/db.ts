@@ -244,3 +244,79 @@ export async function getDashboardStats() {
 
   return { byImpactLevel, byReportType, byUrgency, totalDraft, totalConfirmed, total: all.length };
 }
+
+/**
+ * 特定の報告書と同じ reportType の確定済み事例を集計して分析データを返す。
+ * 発生パターン分析・統計的要因分析に使用する。
+ */
+export async function getIncidentAnalysisData(reportType: "incident" | "accident") {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const all = await db
+    .select()
+    .from(incidents)
+    .where(and(eq(incidents.status, "confirmed"), eq(incidents.reportType, reportType)));
+
+  // ── 場所別集計 ────────────────────────────────────────────────────────────
+  const byLocation: Record<string, number> = {};
+  for (const inc of all) {
+    const loc = (inc.location ?? "不明").trim().slice(0, 20);
+    byLocation[loc] = (byLocation[loc] ?? 0) + 1;
+  }
+  const topLocations = Object.entries(byLocation)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+    .map(([name, count]) => ({ name, count }));
+
+  // ── 時間帯別集計（occurredAt から時間部分を抽出）────────────────────────
+  const byHour: Record<string, number> = {};
+  for (const inc of all) {
+    const raw = inc.occurredAt ?? "";
+    // "HH:MM" or "YYYY-MM-DD HH:MM" or "午前HH時" などを考慮してhour抽出を試みる
+    const hourMatch = raw.match(/(\d{1,2})[:時]/);
+    const hour = hourMatch ? parseInt(hourMatch[1], 10) : null;
+    if (hour !== null && hour >= 0 && hour <= 23) {
+      const slot = `${String(hour).padStart(2, "0")}:00`;
+      byHour[slot] = (byHour[slot] ?? 0) + 1;
+    }
+  }
+  const hourlyPattern = Object.entries(byHour)
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([hour, count]) => ({ hour, count }));
+
+  // ── 影響度レベル別集計 ────────────────────────────────────────────────────
+  const byImpactLevel: Record<string, number> = {};
+  for (const inc of all) {
+    const lvl = inc.impactLevel ?? "0";
+    byImpactLevel[lvl] = (byImpactLevel[lvl] ?? 0) + 1;
+  }
+
+  // ── 原因キーワード頻度（summaryCause から頻出語を抽出）────────────────────
+  const causeWordFreq: Record<string, number> = {};
+  const causeKeywords = [
+    "確認不足", "手順", "コミュニケーション", "環境", "疲労", "注意不足",
+    "転倒", "転落", "誤薬", "誤嚥", "皮膚", "骨折", "出血", "感染",
+    "設備", "人員", "教育", "研修", "マニュアル", "チェック",
+  ];
+  for (const inc of all) {
+    const cause = (inc.summaryCause ?? "") + " " + (inc.summaryWhat ?? "");
+    for (const kw of causeKeywords) {
+      if (cause.includes(kw)) {
+        causeWordFreq[kw] = (causeWordFreq[kw] ?? 0) + 1;
+      }
+    }
+  }
+  const topCauses = Object.entries(causeWordFreq)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
+    .map(([keyword, count]) => ({ keyword, count }));
+
+  return {
+    totalSimilarCases: all.length,
+    topLocations,
+    hourlyPattern,
+    byImpactLevel,
+    topCauses,
+  };
+}
