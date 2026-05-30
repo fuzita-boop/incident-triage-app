@@ -1,5 +1,6 @@
 import PDFDocument from "pdfkit";
 import type { Incident } from "../drizzle/schema";
+import { renderFishboneToPng } from "./fishboneSvgRenderer";
 
 const IMPACT_LABEL: Record<string, string> = {
   "0": "レベル0 - 利用者に未実施",
@@ -59,6 +60,17 @@ export interface PdfShellAnalysis {
  * インシデント詳細PDFを生成してBufferで返す
  */
 export async function generateIncidentPdf(incident: Incident, shellAnalysis?: PdfShellAnalysis): Promise<Buffer> {
+  // フィッシュボーン画像を事前に生成（Promiseコールバック外でawaitを使うため）
+  let fishbonePng: Buffer | null = null;
+  const fishbone = shellAnalysis?.fishbone;
+  if (fishbone && fishbone.categories.length > 0) {
+    try {
+      fishbonePng = await renderFishboneToPng(fishbone);
+    } catch (e) {
+      console.warn("[PDF] Fishbone pre-render failed:", e);
+    }
+  }
+
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({
       size: "A4",
@@ -209,46 +221,34 @@ export async function generateIncidentPdf(incident: Incident, shellAnalysis?: Pd
       }
     }
 
-    // ── シェル分析: フィッシュボーン分析 ────────────────────────────
+    // ── シェル分析: フィッシュボーン分析（SVG→PNG画像として埋め込み） ────────────────────────────
     const fishbone = shellAnalysis?.fishbone;
     if (fishbone && fishbone.categories.length > 0) {
+      if (doc.y > doc.page.height - 240) doc.addPage();
       sectionTitle("シェル分析: フィッシュボーン図（5M特性要因図）");
       doc.font("Regular").fontSize(9).fillColor(GRAY)
         .text("人・手順・機械設備・環境・管理の5M視点で構造化した原因分析です。", 50, doc.y, { width: PAGE_WIDTH });
-      doc.moveDown(0.3);
+      doc.moveDown(0.5);
 
-      // effect
-      const effY = doc.y;
-      doc.rect(50, effY, PAGE_WIDTH, 18).fill("#1e293b");
-      doc.font("Bold").fontSize(10).fillColor("white")
-        .text(`事象: ${fishbone.effect}`, 56, effY + 3, { width: PAGE_WIDTH - 12 });
-      doc.moveDown(0.8);
-
-      const CAT_COLORS: Record<string, string> = {
-        "人（Man）": "#ef4444",
-        "手順（Method）": "#f97316",
-        "機械・設備（Machine）": "#3b82f6",
-        "環境（Milieu）": "#22c55e",
-        "管理（Management）": "#8b5cf6",
-      };
-
-      for (const cat of fishbone.categories) {
-        const catColor = CAT_COLORS[cat.name] ?? "#6366f1";
-        const catY = doc.y;
-        // ページ残量チェック
-        if (catY > doc.page.height - 120) doc.addPage();
-        doc.rect(50, doc.y, PAGE_WIDTH, 16).fill(catColor);
-        doc.font("Bold").fontSize(9).fillColor("white")
-          .text(cat.name, 56, doc.y - 13, { width: PAGE_WIDTH - 12 });
-        doc.moveDown(0.3);
-        for (const cause of cat.causes) {
-          const cY = doc.y;
-          doc.circle(62, cY + 4, 2).fill(catColor);
-          doc.font("Regular").fontSize(9).fillColor("#111827")
-            .text(cause, 70, cY, { width: PAGE_WIDTH - 20 });
+      if (fishbonePng) {
+        // 事前生成済みPNG画像をPDFに埋め込む
+        const imgW = PAGE_WIDTH;
+        const imgH = Math.round(imgW * (420 / 760));
+        if (doc.y + imgH > doc.page.height - 60) doc.addPage();
+        doc.image(fishbonePng, 50, doc.y, { width: imgW, height: imgH });
+        doc.y = doc.y + imgH + 4;
+      } else {
+        // フォールバック: テキスト形式
+        for (const cat of fishbone.categories) {
+          if (doc.y > doc.page.height - 80) doc.addPage();
+          doc.font("Bold").fontSize(9).fillColor("#111827").text(`▶ ${cat.name}`, 50, doc.y, { width: PAGE_WIDTH });
           doc.moveDown(0.2);
+          for (const cause of cat.causes) {
+            doc.font("Regular").fontSize(9).fillColor("#374151").text(`  • ${cause}`, 60, doc.y, { width: PAGE_WIDTH - 10 });
+            doc.moveDown(0.15);
+          }
+          doc.moveDown(0.3);
         }
-        doc.moveDown(0.3);
       }
     }
 

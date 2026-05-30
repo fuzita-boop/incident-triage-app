@@ -130,3 +130,13 @@
 - [x] ShellAnalysisPanel.tsx: 発生パターンタブにホットスポットアラートバッジを表示
 - [x] IncidentReviewPage.tsx: 報告書の場所・時間帯がホットスポットの場合に警告バナーを表示
 - [x] server/incidents.test.ts: getHotspotsテストを追加（27件全通過）
+
+## 機能追加: PDFへのフィッシュボーン図SVG画像埋め込み
+- [x] server/fishboneSvgRenderer.ts: SVGフィッシュボーン図をサーバー側でPNG変換するヘルパーを新規作成（sharp使用）
+- [x] server/pdfExport.ts: フィッシュボーンセクションをPNG画像埋め込みに変更（テキストフォールバック付き）
+- [x] server/incidents.test.ts: fishboneSvgRendererテストを追加（28件全通過）
+
+## 機能追加: 一覧画面からの一括PDF/ZIPダウンロード
+- [x] server/_core/index.ts: /api/incidents/bulk-pdf エンドポイントを追加（archiverでZIP生成、最大50件）
+- [x] client/src/pages/IncidentListPage.tsx: 複数選択モード・チェックボックスUIを追加
+- [x] client/src/pages/IncidentListPage.tsx: ZIPダウンロードボタンを追加（選択中のみ表示）

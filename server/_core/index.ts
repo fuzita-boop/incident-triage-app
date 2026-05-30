@@ -2,6 +2,7 @@ import "dotenv/config";
 import express from "express";
 import { createServer } from "http";
 import net from "net";
+import archiver from "archiver";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { registerStorageProxy } from "./storageProxy";
@@ -11,6 +12,7 @@ import { serveStatic, setupVite } from "./vite";
 import { getIncidentById, getIncidentAnalysisData } from "../db";
 import { generateIncidentPdf } from "../pdfExport";
 import { invokeLLM } from "./llm";
+import { sdk } from "./sdk";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -115,6 +117,112 @@ async function startServer() {
       res.status(500).json({ error: "PDF generation failed" });
     }
   });
+  // 一括PDF/ZIPダウンロードエンドポイント
+  app.get("/api/incidents/bulk-pdf", async (req, res) => {
+    try {
+      // 認証チェック
+      let authedUser: Awaited<ReturnType<typeof sdk.authenticateRequest>> | null = null;
+      try {
+        authedUser = await sdk.authenticateRequest(req);
+      } catch {
+        authedUser = null;
+      }
+      if (!authedUser) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+
+      const idsParam = (req.query.ids as string) ?? "";
+      const ids = idsParam
+        .split(",")
+        .map((s) => parseInt(s.trim(), 10))
+        .filter((n) => !isNaN(n) && n > 0)
+        .slice(0, 50); // 最大50件
+
+      if (ids.length === 0) {
+        res.status(400).json({ error: "No valid IDs provided" });
+        return;
+      }
+
+      res.setHeader("Content-Type", "application/zip");
+      const zipName = `reports_${new Date().toISOString().slice(0, 10)}.zip`;
+      res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(zipName)}`);
+
+      const archive = archiver("zip", { zlib: { level: 6 } });
+      archive.pipe(res);
+
+      for (const id of ids) {
+        try {
+          const incident = await getIncidentById(id);
+          if (!incident) continue;
+
+          const reportType = (incident.reportType ?? "incident") as "incident" | "accident";
+          const [analysis, fishbone] = await Promise.allSettled([
+            getIncidentAnalysisData(reportType),
+            (async () => {
+              if (!incident.summaryWhat) return null;
+              const reportLabel = reportType === "accident" ? "アクシデント（事故報告書）" : "インシデント（ヒヤリハット）";
+              const resp = await invokeLLM({
+                messages: [
+                  { role: "system", content: `あなたは医療・介護現場のリスクマネジメント専門家です。以下の${reportLabel}報告書の内容を分析し、フィッシュボーン図として構造化してください。5カテゴリー（人/手順/機械・設備/環境/管理）で分類し、必ずJSONのみを返してください。` },
+                  { role: "user", content: `事象: ${incident.summaryWhat}\n原因: ${incident.summaryCause ?? "不明"}\n結果: ${incident.summaryResult ?? "不明"}\n発生場所: ${incident.location ?? "不明"}` },
+                ],
+                response_format: {
+                  type: "json_schema",
+                  json_schema: {
+                    name: "fishbone_analysis",
+                    strict: true,
+                    schema: {
+                      type: "object",
+                      properties: {
+                        effect: { type: "string" },
+                        categories: {
+                          type: "array",
+                          items: {
+                            type: "object",
+                            properties: {
+                              name: { type: "string" },
+                              causes: { type: "array", items: { type: "string" } },
+                            },
+                            required: ["name", "causes"],
+                            additionalProperties: false,
+                          },
+                        },
+                      },
+                      required: ["effect", "categories"],
+                      additionalProperties: false,
+                    },
+                  },
+                },
+              });
+              const content = (resp.choices[0]?.message?.content ?? "{}") as string;
+              try { return JSON.parse(content); } catch { return null; }
+            })(),
+          ]);
+
+          const shellAnalysis = {
+            analysis: analysis.status === "fulfilled" ? analysis.value : null,
+            fishbone: fishbone.status === "fulfilled" ? fishbone.value : null,
+          };
+
+          const pdfBuffer = await generateIncidentPdf(incident, shellAnalysis);
+          const dateStr = (incident.occurredAt ?? incident.createdAt?.toISOString().slice(0, 10) ?? "unknown").slice(0, 10);
+          const filename = `${dateStr}_report_${id}.pdf`;
+          archive.append(pdfBuffer, { name: filename });
+        } catch (err) {
+          console.warn(`[Bulk PDF] Failed to generate PDF for incident ${id}:`, err);
+        }
+      }
+
+      await archive.finalize();
+    } catch (err) {
+      console.error("[Bulk PDF] Error:", err);
+      if (!res.headersSent) {
+        res.status(500).json({ error: "ZIP generation failed" });
+      }
+    }
+  });
+
   // tRPC API
   app.use(
     "/api/trpc",

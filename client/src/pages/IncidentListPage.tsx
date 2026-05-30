@@ -31,8 +31,11 @@ import {
   Download,
   FileText,
   Filter,
+  Package,
   Plus,
   Search,
+  Square,
+  CheckSquare,
   Stethoscope,
   Trash2,
   X,
@@ -53,6 +56,9 @@ const URGENCY_JP: Record<string, string> = { High: "高（緊急）", Medium: "�
 export default function IncidentListPage() {
   const [, setLocation] = useLocation();
   const [deleteTargetId, setDeleteTargetId] = useState<number | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [isSelectMode, setIsSelectMode] = useState(false);
+  const [isZipDownloading, setIsZipDownloading] = useState(false);
   const [filterStatus, setFilterStatus] = useState<"all" | "draft" | "confirmed">("all");
   const [filterReportType, setFilterReportType] = useState<"all" | "incident" | "accident">("all");
   const [filterLevel, setFilterLevel] = useState<"all" | ImpactLevel>("all");
@@ -99,10 +105,74 @@ export default function IncidentListPage() {
             全報告書の管理・フィルタリング
           </p>
         </div>
-        <Button onClick={() => setLocation("/upload")} className="gap-2 shadow-sm">
-          <Plus className="h-4 w-4" />
-          新規登録
-        </Button>
+        <div className="flex items-center gap-2">
+          {isSelectMode ? (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 text-xs"
+                onClick={() => {
+                  setIsSelectMode(false);
+                  setSelectedIds(new Set());
+                }}
+              >
+                <X className="h-3.5 w-3.5" />
+                キャンセル
+              </Button>
+              {selectedIds.size > 0 && (
+              <Button
+                size="sm"
+                className="gap-1.5 text-xs"
+                disabled={isZipDownloading}
+                onClick={async () => {
+                  if (selectedIds.size === 0) return;
+                  setIsZipDownloading(true);
+                  try {
+                    const ids = Array.from(selectedIds).join(",");
+                    const res = await fetch(`/api/incidents/bulk-pdf?ids=${ids}`);
+                    if (!res.ok) throw new Error("ZIP生成に失敗しました");
+                    const blob = await res.blob();
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = `reports_${new Date().toISOString().slice(0, 10)}.zip`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    toast.success(`${selectedIds.size}件のPDFをZIPでダウンロードしました`);
+                    setIsSelectMode(false);
+                    setSelectedIds(new Set());
+                  } catch (e) {
+                    toast.error("ZIPダウンロードに失敗しました");
+                  } finally {
+                    setIsZipDownloading(false);
+                  }
+                }}
+              >
+                {isZipDownloading ? (
+                  <span className="flex items-center gap-1"><span className="animate-spin h-3 w-3 border border-current border-t-transparent rounded-full" />生成中...</span>
+                ) : (
+                  <><Package className="h-3.5 w-3.5" />{selectedIds.size}件をZIPで保存</>
+                )}
+              </Button>
+              )}
+            </>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 text-xs"
+              onClick={() => setIsSelectMode(true)}
+            >
+              <CheckSquare className="h-3.5 w-3.5" />
+              複数選択
+            </Button>
+          )}
+          <Button onClick={() => setLocation("/upload")} className="gap-2 shadow-sm">
+            <Plus className="h-4 w-4" />
+            新規登録
+          </Button>
+        </div>
       </div>
 
       {/* 検索バー */}
@@ -260,6 +330,9 @@ export default function IncidentListPage() {
         <div className="flex items-center gap-3">
           <p className="text-sm text-muted-foreground">
             {incidents?.length ?? 0} 件の報告書
+            {isSelectMode && selectedIds.size > 0 && (
+              <span className="ml-2 text-primary font-medium">（{selectedIds.size}件選択中）</span>
+            )}
           </p>
           {keyword && (
             <span className="inline-flex items-center gap-1 text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">
@@ -315,19 +388,39 @@ export default function IncidentListPage() {
               (inc.urgency ?? "Low") as UrgencyLevel
             );
             const rType = (inc.reportType ?? "incident") as ReportType;
+            const isSelected = selectedIds.has(inc.id);
             return (
               <button
                 key={inc.id}
-                onClick={() => setLocation(`/incidents/${inc.id}`)}
+                onClick={() => {
+                  if (isSelectMode) {
+                    setSelectedIds(prev => {
+                      const next = new Set(prev);
+                      if (next.has(inc.id)) next.delete(inc.id);
+                      else next.add(inc.id);
+                      return next;
+                    });
+                  } else {
+                    setLocation(`/incidents/${inc.id}`);
+                  }
+                }}
                 className="w-full text-left group"
               >
                 <Card
                   className={cn(
-                    "shadow-sm transition-all hover:shadow-md hover:border-primary/30 cursor-pointer",
-                    urgent ? "border-red-200 bg-red-50/30" : "border-border/60"
+                    "shadow-sm transition-all hover:shadow-md hover:border-primary/30 cursor-pointer relative",
+                    urgent ? "border-red-200 bg-red-50/30" : "border-border/60",
+                    isSelected ? "ring-2 ring-primary border-primary/40" : ""
                   )}
                 >
-                  <CardContent className="py-4 px-5">
+                  {isSelectMode && (
+                    <span className="absolute top-3 left-3 z-10 pointer-events-none">
+                      {isSelected
+                        ? <CheckSquare className="h-4 w-4 text-primary" />
+                        : <Square className="h-4 w-4 text-muted-foreground" />}
+                    </span>
+                  )}
+                  <CardContent className={cn("py-4 px-5", isSelectMode && "pl-9")}>
                     <div className="flex items-center gap-4">
                       {/* 影響度バッジ */}
                       <span

@@ -632,3 +632,25 @@ describe("incidents.getHotspots", () => {
     expect(result.timeAlert).toBeNull();
   });
 });
+
+// ── fishboneSvgRenderer モックテスト ────────────────────────────────────────
+
+vi.mock("./fishboneSvgRenderer", () => ({
+  renderFishboneToPng: vi.fn().mockResolvedValue(Buffer.from("fake-png")),
+}));
+
+describe("fishboneSvgRenderer", () => {
+  it("renderFishboneToPngはBufferを返す", async () => {
+    const { renderFishboneToPng } = await import("./fishboneSvgRenderer");
+    const mockFishbone = {
+      effect: "転倒事故",
+      categories: [
+        { name: "人", causes: ["注意不足", "疲労"] },
+        { name: "環境", causes: ["床が濡れていた"] },
+      ],
+    };
+    const result = await renderFishboneToPng(mockFishbone);
+    expect(result).toBeInstanceOf(Buffer);
+    expect(renderFishboneToPng).toHaveBeenCalledWith(mockFishbone);
+  });
+});
