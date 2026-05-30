@@ -1,6 +1,7 @@
 import PDFDocument from "pdfkit";
 import type { Incident } from "../drizzle/schema";
 import { renderFishboneToPng } from "./fishboneSvgRenderer";
+import { loadFonts } from "./fontLoader";
 
 const IMPACT_LABEL: Record<string, string> = {
   "0": "レベル0 - 利用者に未実施",
@@ -60,7 +61,8 @@ export interface PdfShellAnalysis {
  * インシデント詳細PDFを生成してBufferで返す
  */
 export async function generateIncidentPdf(incident: Incident, shellAnalysis?: PdfShellAnalysis): Promise<Buffer> {
-  // フィッシュボーン画像を事前に生成（Promiseコールバック外でawaitを使うため）
+  // フォントとフィッシュボーン画像を事前に生成（Promiseコールバック外でawaitを使うため）
+  const fonts = await loadFonts();
   let fishbonePng: Buffer | null = null;
   const fishbone = shellAnalysis?.fishbone;
   if (fishbone && fishbone.categories.length > 0) {
@@ -88,15 +90,12 @@ export async function generateIncidentPdf(incident: Incident, shellAnalysis?: Pd
     doc.on("error", reject);
 
     // ── フォント設定（日本語対応）──────────────────────────────────
-    // pdfkitはデフォルトでHelveticaを使用。日本語はUnicode対応フォントが必要。
-    // システムフォントを使用する
-    const FONT_PATH = "/usr/share/fonts/opentype/noto/NotoSansCJKsc-Regular.otf";
-    const FONT_BOLD_PATH = "/usr/share/fonts/opentype/noto/NotoSansCJKsc-Bold.otf";
-
-    try {
-      doc.registerFont("Regular", FONT_PATH);
-      doc.registerFont("Bold", FONT_BOLD_PATH);
-    } catch {
+    // fontLoaderで事前にロード済みのフォントバッファを使用
+    // 本番環境ではストレージから取得、サンドボックスではシステムフォントを使用
+    if (fonts.regular && fonts.bold) {
+      doc.registerFont("Regular", fonts.regular);
+      doc.registerFont("Bold", fonts.bold);
+    } else {
       // フォールバック: Helvetica（日本語は文字化けするが構造は維持）
       doc.registerFont("Regular", "Helvetica");
       doc.registerFont("Bold", "Helvetica-Bold");
