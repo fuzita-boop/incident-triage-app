@@ -140,3 +140,8 @@
 - [x] server/_core/index.ts: /api/incidents/bulk-pdf エンドポイントを追加（archiverでZIP生成、最大50件）
 - [x] client/src/pages/IncidentListPage.tsx: 複数選択モード・チェックボックスUIを追加
 - [x] client/src/pages/IncidentListPage.tsx: ZIPダウンロードボタンを追加（選択中のみ表示）
+
+## バグ修正: PDFフィッシュボーン図文字化け・PDF後に戻れない問題
+- [x] server/pdfExport.ts: フィッシュボーン図のPNG画像埋め込みを廃止し、テキスト形式（カテゴリ別箇条書き）に変更（renderFishboneToPngのimport削除）
+- [x] server/fishboneSvgRenderer.ts: pdfExportから切り離し（importを削除）
+- [x] client/src/pages/IncidentReviewPage.tsx: PDF出力ボタンをfetch+Blob方式に変更（window.open廃止、isPdfDownloading状態追加）

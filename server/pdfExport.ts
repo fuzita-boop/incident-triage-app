@@ -1,6 +1,5 @@
 import PDFDocument from "pdfkit";
 import type { Incident } from "../drizzle/schema";
-import { renderFishboneToPng } from "./fishboneSvgRenderer";
 import { loadFonts } from "./fontLoader";
 
 const IMPACT_LABEL: Record<string, string> = {
@@ -61,17 +60,8 @@ export interface PdfShellAnalysis {
  * インシデント詳細PDFを生成してBufferで返す
  */
 export async function generateIncidentPdf(incident: Incident, shellAnalysis?: PdfShellAnalysis): Promise<Buffer> {
-  // フォントとフィッシュボーン画像を事前に生成（Promiseコールバック外でawaitを使うため）
+  // フォントを事前に読み込む（Promiseコールバック外でawaitを使うため）
   const fonts = await loadFonts();
-  let fishbonePng: Buffer | null = null;
-  const fishbone = shellAnalysis?.fishbone;
-  if (fishbone && fishbone.categories.length > 0) {
-    try {
-      fishbonePng = await renderFishboneToPng(fishbone);
-    } catch (e) {
-      console.warn("[PDF] Fishbone pre-render failed:", e);
-    }
-  }
 
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({
@@ -229,25 +219,16 @@ export async function generateIncidentPdf(incident: Incident, shellAnalysis?: Pd
         .text("人・手順・機械設備・環境・管理の5M視点で構造化した原因分析です。", 50, doc.y, { width: PAGE_WIDTH });
       doc.moveDown(0.5);
 
-      if (fishbonePng) {
-        // 事前生成済みPNG画像をPDFに埋め込む
-        const imgW = PAGE_WIDTH;
-        const imgH = Math.round(imgW * (420 / 760));
-        if (doc.y + imgH > doc.page.height - 60) doc.addPage();
-        doc.image(fishbonePng, 50, doc.y, { width: imgW, height: imgH });
-        doc.y = doc.y + imgH + 4;
-      } else {
-        // フォールバック: テキスト形式
-        for (const cat of fishbone.categories) {
-          if (doc.y > doc.page.height - 80) doc.addPage();
-          doc.font("Bold").fontSize(9).fillColor("#111827").text(`▶ ${cat.name}`, 50, doc.y, { width: PAGE_WIDTH });
-          doc.moveDown(0.2);
-          for (const cause of cat.causes) {
-            doc.font("Regular").fontSize(9).fillColor("#374151").text(`  • ${cause}`, 60, doc.y, { width: PAGE_WIDTH - 10 });
-            doc.moveDown(0.15);
-          }
-          doc.moveDown(0.3);
+      // テキスト形式でカテゴリ別に表示
+      for (const cat of fishbone.categories) {
+        if (doc.y > doc.page.height - 80) doc.addPage();
+        doc.font("Bold").fontSize(9).fillColor("#111827").text(`▶ ${cat.name}`, 50, doc.y, { width: PAGE_WIDTH });
+        doc.moveDown(0.2);
+        for (const cause of cat.causes) {
+          doc.font("Regular").fontSize(9).fillColor("#374151").text(`  • ${cause}`, 60, doc.y, { width: PAGE_WIDTH - 10 });
+          doc.moveDown(0.15);
         }
+        doc.moveDown(0.3);
       }
     }
 

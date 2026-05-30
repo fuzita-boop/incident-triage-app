@@ -88,6 +88,7 @@ export default function IncidentReviewPage() {
   });
 
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [isPdfDownloading, setIsPdfDownloading] = useState(false);
   const utils = trpc.useUtils();
   const deleteMutation = trpc.incidents.delete.useMutation({
     onSuccess: () => {
@@ -676,7 +677,28 @@ export default function IncidentReviewPage() {
               <Button
                 variant="outline"
                 className="w-full gap-2 border-teal-200 text-teal-700 hover:bg-teal-50"
-                onClick={() => window.open(`/api/incidents/${incident?.id}/pdf`, "_blank")}
+                onClick={async () => {
+                  if (!incident?.id) return;
+                  setIsPdfDownloading(true);
+                  try {
+                    const res = await fetch(`/api/incidents/${incident.id}/pdf`, { credentials: "include" });
+                    if (!res.ok) throw new Error("PDF生成に失敗しました");
+                    const blob = await res.blob();
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = `report-${incident.id}.pdf`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                  } catch (e) {
+                    toast.error("ファイルのダウンロードに失敗しました");
+                  } finally {
+                    setIsPdfDownloading(false);
+                  }
+                }}
+                disabled={isPdfDownloading}
               >
                 <Download className="h-4 w-4" />
                 PDFでダウンロード
