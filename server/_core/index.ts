@@ -2,7 +2,7 @@ import "dotenv/config";
 import express from "express";
 import { createServer } from "http";
 import net from "net";
-import archiver from "archiver";
+import JSZip from "jszip";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { registerStorageProxy } from "./storageProxy";
@@ -144,12 +144,8 @@ async function startServer() {
         return;
       }
 
-      res.setHeader("Content-Type", "application/zip");
-      const zipName = `reports_${new Date().toISOString().slice(0, 10)}.zip`;
-      res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(zipName)}`);
-
-      const archive = archiver("zip", { zlib: { level: 6 } });
-      archive.pipe(res);
+      // JSZipで各PDFを生成してZIPに追加
+      const zip = new JSZip();
 
       for (const id of ids) {
         try {
@@ -208,13 +204,17 @@ async function startServer() {
           const pdfBuffer = await generateIncidentPdf(incident, shellAnalysis);
           const dateStr = (incident.occurredAt ?? incident.createdAt?.toISOString().slice(0, 10) ?? "unknown").slice(0, 10);
           const filename = `${dateStr}_report_${id}.pdf`;
-          archive.append(pdfBuffer, { name: filename });
+          zip.file(filename, pdfBuffer);
         } catch (err) {
           console.warn(`[Bulk PDF] Failed to generate PDF for incident ${id}:`, err);
         }
       }
 
-      await archive.finalize();
+      const zipName = `reports_${new Date().toISOString().slice(0, 10)}.zip`;
+      const zipBuffer = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE", compressionOptions: { level: 6 } });
+      res.setHeader("Content-Type", "application/zip");
+      res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(zipName)}`);
+      res.send(zipBuffer);
     } catch (err) {
       console.error("[Bulk PDF] Error:", err);
       if (!res.headersSent) {
