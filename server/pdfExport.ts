@@ -63,6 +63,7 @@ export async function generateIncidentPdf(incident: Incident, shellAnalysis?: Pd
     const doc = new PDFDocument({
       size: "A4",
       margin: 50,
+      bufferPages: true,
       info: {
         Title: `インシデント報告書 #${incident.id}`,
         Author: "AIインシデント管理システム",
@@ -77,8 +78,8 @@ export async function generateIncidentPdf(incident: Incident, shellAnalysis?: Pd
     // ── フォント設定（日本語対応）──────────────────────────────────
     // pdfkitはデフォルトでHelveticaを使用。日本語はUnicode対応フォントが必要。
     // システムフォントを使用する
-    const FONT_PATH = "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc";
-    const FONT_BOLD_PATH = "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc";
+    const FONT_PATH = "/usr/share/fonts/opentype/noto/NotoSansCJKsc-Regular.otf";
+    const FONT_BOLD_PATH = "/usr/share/fonts/opentype/noto/NotoSansCJKsc-Bold.otf";
 
     try {
       doc.registerFont("Regular", FONT_PATH);
