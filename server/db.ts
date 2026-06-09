@@ -381,3 +381,118 @@ export async function getHotspots(
 
   return { locationAlert, timeAlert };
 }
+
+/**
+ * 月次レポート用集計データを取得する。
+ * 指定年月（日本時間）の確定済み事例を対象に、インシデント・アクシデント別の詳細分析を返す。
+ */
+export async function getMonthlyReportData(year: number, month: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const all = await db.select().from(incidents).where(eq(incidents.status, "confirmed"));
+
+  // 指定月（JST）のレコードだけ抽出
+  const monthlyAll = all.filter((inc) => {
+    const jst = new Date(new Date(inc.createdAt).toLocaleString("en-US", { timeZone: "Asia/Tokyo" }));
+    return jst.getFullYear() === year && jst.getMonth() + 1 === month;
+  });
+
+  const incidentRows = monthlyAll.filter((i) => i.reportType === "incident");
+  const accidentRows = monthlyAll.filter((i) => i.reportType === "accident");
+
+  function analyzeGroup(rows: typeof monthlyAll) {
+    // 影響度レベル別
+    const byImpactLevel: Record<string, number> = {};
+    for (const inc of rows) {
+      const lvl = inc.impactLevel ?? "0";
+      byImpactLevel[lvl] = (byImpactLevel[lvl] ?? 0) + 1;
+    }
+
+    // 場所別（上位5件）
+    const byLocation: Record<string, number> = {};
+    for (const inc of rows) {
+      const loc = (inc.location ?? "不明").trim().slice(0, 20);
+      byLocation[loc] = (byLocation[loc] ?? 0) + 1;
+    }
+    const topLocations = Object.entries(byLocation)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([name, count]) => ({ name, count }));
+
+    // 時間帯別（6時間ブロック: 深夜/早朝/日中/夕方夜間）
+    const timeBlocks: Record<string, number> = {
+      "深夜(0-5時)": 0,
+      "早朝(6-11時)": 0,
+      "日中(12-17時)": 0,
+      "夕方夜間(18-23時)": 0,
+    };
+    for (const inc of rows) {
+      const raw = inc.occurredAt ?? "";
+      const hourMatch = raw.match(/(\d{1,2})[:時]/);
+      const hour = hourMatch ? parseInt(hourMatch[1], 10) : null;
+      if (hour === null) continue;
+      if (hour >= 0 && hour <= 5) timeBlocks["深夜(0-5時)"]++;
+      else if (hour >= 6 && hour <= 11) timeBlocks["早朝(6-11時)"]++;
+      else if (hour >= 12 && hour <= 17) timeBlocks["日中(12-17時)"]++;
+      else timeBlocks["夕方夜間(18-23時)"]++;
+    }
+
+    // 事象キーワード（summaryWhat + summaryCause から頻出語を抽出）
+    const causeKeywords = [
+      "転倒", "転落", "誤薬", "誤嚥", "皮膚損傷", "骨折", "出血", "感染",
+      "確認不足", "手順違反", "コミュニケーション不足", "環境要因",
+      "疲労", "注意不足", "設備不具合", "チェック漏れ",
+    ];
+    const keywordFreq: Record<string, number> = {};
+    for (const inc of rows) {
+      const text = (inc.summaryWhat ?? "") + " " + (inc.summaryCause ?? "") + " " + (inc.summaryResult ?? "");
+      for (const kw of causeKeywords) {
+        if (text.includes(kw)) {
+          keywordFreq[kw] = (keywordFreq[kw] ?? 0) + 1;
+        }
+      }
+    }
+    const topKeywords = Object.entries(keywordFreq)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([keyword, count]) => ({ keyword, count }));
+
+    // 緊急度別
+    const byUrgency: Record<string, number> = { High: 0, Medium: 0, Low: 0 };
+    for (const inc of rows) {
+      const u = inc.urgency ?? "Low";
+      byUrgency[u] = (byUrgency[u] ?? 0) + 1;
+    }
+
+    // 直近5件の事象概要
+    const recentSummaries = rows
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 5)
+      .map((inc) => ({
+        occurredAt: inc.occurredAt ?? "",
+        location: inc.location ?? "",
+        summaryWhat: inc.summaryWhat ?? "",
+        impactLevel: inc.impactLevel ?? "0",
+        urgency: inc.urgency ?? "Low",
+      }));
+
+    return {
+      total: rows.length,
+      byImpactLevel,
+      topLocations,
+      timeBlocks,
+      topKeywords,
+      byUrgency,
+      recentSummaries,
+    };
+  }
+
+  return {
+    year,
+    month,
+    totalAll: monthlyAll.length,
+    incident: analyzeGroup(incidentRows),
+    accident: analyzeGroup(accidentRows),
+  };
+}

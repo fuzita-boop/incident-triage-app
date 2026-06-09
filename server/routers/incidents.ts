@@ -12,6 +12,7 @@ import {
   getIncidentAnalysisData,
   getIncidentById,
   getIncidentsByUploadGroup,
+  getMonthlyReportData,
   getMonthlyTrends,
   listIncidents,
   updateIncident,
@@ -613,5 +614,12 @@ export const incidentsRouter = router({
       }
 
       return { success: true, uploadGroupId: input.uploadGroupId };
+    }),
+
+  // 月次レポート用集計データ取得
+  getMonthlyReport: protectedProcedure
+    .input(z.object({ year: z.number().int().min(2020).max(2100), month: z.number().int().min(1).max(12) }))
+    .query(async ({ input }) => {
+      return await getMonthlyReportData(input.year, input.month);
     }),
 });

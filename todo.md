@@ -145,3 +145,13 @@
 - [x] server/pdfExport.ts: フィッシュボーン図のPNG画像埋め込みを廃止し、テキスト形式（カテゴリ別箇条書き）に変更（renderFishboneToPngのimport削除）
 - [x] server/fishboneSvgRenderer.ts: pdfExportから切り離し（importを削除）
 - [x] client/src/pages/IncidentReviewPage.tsx: PDF出力ボタンをfetch+Blob方式に変更（window.open廃止、isPdfDownloading状態追加）
+
+## 新機能: 月次レポートPDF出力
+- [x] server/db.ts: getMonthlyReportData ヘルパーを追加（指定年月のインシデント/アクシデント別集計）
+- [x] server/routers/incidents.ts: incidents.getMonthlyReport プロシージャを追加
+- [x] server/monthlyReportPdf.ts: A4 1枚の月次レポートPDF生成ロジックを新規作成
+- [x] server/_core/index.ts: /api/monthly-report エンドポイントを追加
+- [x] client/src/pages/MonthlyReportPage.tsx: 月・年選択UI + プレビュー + ダウンロードボタン
+- [x] client/src/App.tsx: /monthly-report ルートを追加
+- [x] client/src/components/DashboardLayout.tsx: サイドバーに「月次レポート」リンクを追加
+- [x] server/incidents.test.ts: getMonthlyReportData テストを追加

@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/sidebar";
 import { getLoginUrl } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
-import { Activity, BarChart3, ClipboardList, LogOut, PanelLeft, Plus, Shield } from "lucide-react";
+import { Activity, BarChart3, ClipboardList, FileBarChart2, LogOut, PanelLeft, Plus, Shield } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
@@ -31,6 +31,7 @@ const menuItems = [
   { icon: BarChart3, label: "ダッシュボード", path: "/" },
   { icon: Plus, label: "新規報告書登録", path: "/upload" },
   { icon: ClipboardList, label: "報告書一覧", path: "/incidents" },
+  { icon: FileBarChart2, label: "月次レポート", path: "/monthly-report" },
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";

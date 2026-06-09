@@ -42,12 +42,14 @@ vi.mock("./db", () => ({
   getDashboardStats: vi.fn(),
   getIncidentAnalysisData: vi.fn(),
   getHotspots: vi.fn(),
+  getMonthlyReportData: vi.fn(),
   deleteIncident: vi.fn(),
   deleteIncidentsByUploadGroup: vi.fn(),
   countIncidentsByFileKey: vi.fn(),
   getDb: vi.fn(),
   upsertUser: vi.fn(),
   getUserByOpenId: vi.fn(),
+  getMonthlyTrends: vi.fn(),
 }));
 
 vi.mock("./_core/llm", () => ({
@@ -652,5 +654,60 @@ describe("fishboneSvgRenderer", () => {
     const result = await renderFishboneToPng(mockFishbone);
     expect(result).toBeInstanceOf(Buffer);
     expect(renderFishboneToPng).toHaveBeenCalledWith(mockFishbone);
+  });
+});
+
+// ── incidents.getMonthlyReport テスト ────────────────────────────────────────
+describe("incidents.getMonthlyReport", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const mockMonthlyData = {
+    year: 2026,
+    month: 5,
+    totalAll: 10,
+    incident: {
+      total: 7,
+      byImpactLevel: { "0": 3, "1": 2, "2": 2 },
+      topLocations: [{ name: "デイルーム", count: 4 }, { name: "廊下", count: 3 }],
+      timeBlocks: { "深夜(0-5時)": 1, "早朝(6-11時)": 2, "日中(12-17時)": 3, "夕方夜間(18-23時)": 1 },
+      topKeywords: [{ keyword: "確認不足", count: 3 }, { keyword: "転倒", count: 2 }],
+      byUrgency: { High: 1, Medium: 2, Low: 4 },
+      recentSummaries: [
+        { occurredAt: "2026-05-10 10:00", location: "デイルーム", summaryWhat: "転倒しそうになった", impactLevel: "1", urgency: "Low" },
+      ],
+    },
+    accident: {
+      total: 3,
+      byImpactLevel: { "2": 1, "3a": 2 },
+      topLocations: [{ name: "浴室", count: 2 }],
+      timeBlocks: { "深夜(0-5時)": 0, "早朝(6-11時)": 1, "日中(12-17時)": 2, "夕方夜間(18-23時)": 0 },
+      topKeywords: [{ keyword: "転倒", count: 2 }],
+      byUrgency: { High: 0, Medium: 1, Low: 2 },
+      recentSummaries: [
+        { occurredAt: "2026-05-15 09:00", location: "浴室", summaryWhat: "入浴中に転倒", impactLevel: "3a", urgency: "Medium" },
+      ],
+    },
+  };
+
+  it("指定年月の月次集計データを返す", async () => {
+    const { getMonthlyReportData } = await import("./db");
+    vi.mocked(getMonthlyReportData).mockResolvedValue(mockMonthlyData);
+    const caller = appRouter.createCaller(createAuthContext());
+    const result = await caller.incidents.getMonthlyReport({ year: 2026, month: 5 });
+    expect(getMonthlyReportData).toHaveBeenCalledWith(2026, 5);
+    expect(result.totalAll).toBe(10);
+    expect(result.incident.total).toBe(7);
+    expect(result.accident.total).toBe(3);
+    expect(result.incident.topLocations[0].name).toBe("デイルーム");
+  });
+
+  it("月が範囲外の場合はエラーになる", async () => {
+    const caller = appRouter.createCaller(createAuthContext());
+    await expect(caller.incidents.getMonthlyReport({ year: 2026, month: 13 })).rejects.toThrow();
+  });
+
+  it("年が範囲外の場合はエラーになる", async () => {
+    const caller = appRouter.createCaller(createAuthContext());
+    await expect(caller.incidents.getMonthlyReport({ year: 2019, month: 1 })).rejects.toThrow();
   });
 });

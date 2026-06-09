@@ -11,6 +11,8 @@ import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { getIncidentById, getIncidentAnalysisData } from "../db";
 import { generateIncidentPdf } from "../pdfExport";
+import { generateMonthlyReportPdf } from "../monthlyReportPdf";
+import { getMonthlyReportData } from "../db";
 import { invokeLLM } from "./llm";
 import { sdk } from "./sdk";
 
@@ -220,6 +222,40 @@ async function startServer() {
       if (!res.headersSent) {
         res.status(500).json({ error: "ZIP generation failed" });
       }
+    }
+  });
+
+  // 月次レポートPDFエンドポイント
+  app.get("/api/monthly-report/pdf", async (req, res) => {
+    try {
+      // 認証チェック（sdk.authenticateRequestでセッションJWTを検証）
+      try {
+        await sdk.authenticateRequest(req);
+      } catch {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+
+      const yearStr = req.query.year as string;
+      const monthStr = req.query.month as string;
+      const year = parseInt(yearStr, 10);
+      const month = parseInt(monthStr, 10);
+
+      if (isNaN(year) || isNaN(month) || month < 1 || month > 12) {
+        res.status(400).json({ error: "Invalid year or month" });
+        return;
+      }
+
+      const data = await getMonthlyReportData(year, month);
+      const pdfBuffer = await generateMonthlyReportPdf(data);
+      const filename = encodeURIComponent(`monthly_report_${year}_${String(month).padStart(2, "0")}.pdf`);
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${filename}`);
+      res.setHeader("Content-Length", pdfBuffer.length);
+      res.send(pdfBuffer);
+    } catch (err) {
+      console.error("[Monthly Report PDF] Error:", err);
+      res.status(500).json({ error: "PDF generation failed" });
     }
   });
 
