@@ -22,6 +22,8 @@ export interface LocalReport {
   reportedActions: string[];
   aiSuggestedActions: string[];
   fishbone: Record<string, string[]>;
+  ocrText?: string;
+  ocrWarnings?: string[];
   createdAt: number;
   updatedAt: number;
   confirmedAt?: number;

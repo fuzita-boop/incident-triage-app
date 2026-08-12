@@ -177,7 +177,8 @@ export default defineConfig({
         icons: [{ src: "icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any maskable" }],
       },
       workbox: {
-        globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
+        globPatterns: ["**/*.{js,mjs,css,html,svg,png,woff2,wasm,gz}"],
+        maximumFileSizeToCacheInBytes: 25 * 1024 * 1024,
         navigateFallback: `${publicBase.replace(/\/$/, "")}/index.html`,
         cleanupOutdatedCaches: true,
       },
