@@ -23,3 +23,15 @@ Viteのプレビューサーバーはサブパス配信の静的アセット解�
 ## 2026-08-12: オフライン起動
 
 Service Workerの事前キャッシュには381エントリが保存されていることを確認した。GitHub Pages相当のローカル静的配信を停止した後、同一URLへ再遷移してもダッシュボードが表示された。保存したテスト報告書も1件として表示され、アプリ本体の起動とIndexedDBのデータ閲覧がキャッシュだけで継続することを確認した。
+
+## 2026-08-12: GitHub Pages設定
+
+`https://github.com/fuzita-boop/incident-triage-app/settings/pages` を確認したところ、リポジトリを公開するか、非公開Pagesを利用できるプランへ変更するまでPagesを有効化できない状態だった。公開に必要なGitHub Actionsワークフローは `main` ブランチへ同期済みである。
+
+## 2026-08-12: GitHub公開操作
+
+ユーザーの確認後、GitHubの一般設定にある公開設定変更ダイアログを開いた。次の画面でリポジトリ名を入力して「Change to public」を確定すると、ソースコードとワークフローが公開状態になる。端末内のIndexedDBデータやバックアップZIPはGitHubリポジトリに含まれない。
+
+GitHubの公開確認ダイアログが表示され、「I want to make this repository public」という最初の確認ステップが確認できた。GitHubは影響内容の確認後に公開実行ボタンを表示する段階的な確認フローを使用する。
+
+ユーザー確認に基づき、GitHubが示した影響内容を確認する段階を進め、最終の「Make this repository public」操作を送信した。公開状態への変更完了とPagesワークフローの実行結果は、次の確認で検証する。

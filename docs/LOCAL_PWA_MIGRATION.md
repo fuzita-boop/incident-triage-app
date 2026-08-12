@@ -38,3 +38,7 @@ node scripts/export-legacy-backup.mjs /安全な保存先/incident-triage-legacy
 ## GitHub Pages
 
 Viteのベースパスをリポジトリ名に合わせて設定し、GitHub Actionsが静的ビルド成果物をGitHub Pagesへ配置する。クライアントルーティングはGitHub Pagesのサブパスと直接アクセスに対応する。GitHub Pagesの公開設定は、リポジトリ設定で公開元をGitHub Actionsに変更する必要がある。
+
+## GitHub Pages公開の前提
+
+接続済みの `fuzita-boop/incident-triage-app` は現在GitHub Pagesを利用できない非公開リポジトリとして設定されている。GitHubの設定画面では、Pagesを有効化するにはリポジトリを公開するか、非公開Pagesを利用できるプランへ変更する必要があると表示された。公開リポジトリにはアプリのソースコードとGitHub Actions設定のみが含まれ、IndexedDB内の報告書、画像、PDF、バックアップZIPは含まれない。

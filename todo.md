@@ -167,3 +167,4 @@
 - [x] GitHub ActionsによるGitHub Pages自動デプロイ設定を追加する
 - [x] ローカル保存・バックアップ/復元・オフライン起動・静的ビルドをテストする
 - [ ] GitHubリポジトリへ移行内容を同期し、GitHub Pagesを有効化して公開URLを確認する
+- [ ] GitHub ActionsのNode.jsセットアップ順序を修正し、Pagesデプロイを成功させる
