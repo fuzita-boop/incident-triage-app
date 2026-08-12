@@ -1,403 +1,52 @@
-import { trpc } from "@/lib/trpc";
-import {
-  IMPACT_LEVEL_SHORT,
-  REPORT_TYPE_SHORT,
-  isUrgentIncident,
-  type ImpactLevel,
-  type ReportType,
-  type UrgencyLevel,
-} from "../../../shared/types";
+import { useEffect, useState } from "react";
+import { Link } from "wouter";
+import { AlertTriangle, ClipboardList, FileCheck2, FilePlus2, HardDrive, ShieldCheck } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
-import { useLocation } from "wouter";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  Legend,
-  LineChart,
-  Line,
-  CartesianGrid,
-} from "recharts";
-import { AlertTriangle, CheckCircle2, ClipboardList, FileText, FileWarning, Plus, Stethoscope } from "lucide-react";
 import { Button } from "@/components/ui/button";
-
-const IMPACT_COLORS: Record<string, string> = {
-  "0": "#94a3b8",
-  "1": "#4ade80",
-  "2": "#38bdf8",
-  "3a": "#fbbf24",
-  "3b": "#fb923c",
-  "4": "#f87171",
-  "5": "#dc2626",
-};
-
-const PIE_COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444"];
+import { getLocalStats, listLocalReports, type LocalReport } from "@/lib/localDb";
 
 export default function Dashboard() {
-  const [, setLocation] = useLocation();
-  const { data: stats, isLoading } = trpc.incidents.dashboardStats.useQuery();
-  const { data: monthlyTrends, isLoading: trendsLoading } = trpc.incidents.monthlyTrends.useQuery({ months: 12 });
-  const { data: recentIncidents } = trpc.incidents.list.useQuery({
-    status: "confirmed",
-    limit: 5,
-  });
-  const { data: draftIncidents } = trpc.incidents.list.useQuery({
-    status: "draft",
-    limit: 5,
-  });
+  const [stats, setStats] = useState({ total: 0, confirmed: 0, drafts: 0, incident: 0, accident: 0, urgent: 0 });
+  const [recent, setRecent] = useState<LocalReport[]>([]);
 
-  const impactChartData = stats
-    ? Object.entries(stats.byImpactLevel)
-        .sort((a, b) => {
-          const order = ["0", "1", "2", "3a", "3b", "4", "5"];
-          return order.indexOf(a[0]) - order.indexOf(b[0]);
-        })
-        .map(([level, count]) => ({
-          name: IMPACT_LEVEL_SHORT[level as ImpactLevel] ?? level,
-          件数: count,
-          fill: IMPACT_COLORS[level] ?? "#94a3b8",
-        }))
-    : [];
+  useEffect(() => {
+    void Promise.all([getLocalStats(), listLocalReports()]).then(([nextStats, nextReports]) => {
+      setStats(nextStats);
+      setRecent(nextReports.slice(0, 6));
+    });
+  }, []);
 
-  const reportTypeChartData = stats
-    ? [
-        { name: "ヒヤリハット", value: stats.byReportType["incident"] ?? 0 },
-        { name: "事故報告書", value: stats.byReportType["accident"] ?? 0 },
-      ]
-    : [];
-
-  const urgencyChartData = stats
-    ? [
-        { name: "高（緊急）", value: stats.byUrgency["High"] ?? 0 },
-        { name: "中", value: stats.byUrgency["Medium"] ?? 0 },
-        { name: "低", value: stats.byUrgency["Low"] ?? 0 },
-      ]
-    : [];
+  const summaryCards = [
+    { label: "保存済み報告書", value: stats.total, icon: ClipboardList, className: "text-slate-700 bg-slate-50" },
+    { label: "未確定の下書き", value: stats.drafts, icon: FilePlus2, className: "text-amber-700 bg-amber-50" },
+    { label: "確定済み", value: stats.confirmed, icon: FileCheck2, className: "text-emerald-700 bg-emerald-50" },
+    { label: "要確認", value: stats.urgent, icon: AlertTriangle, className: "text-red-700 bg-red-50" },
+  ];
 
   return (
-    <div className="space-y-6">
-      {/* ヘッダー */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">ダッシュボード</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            報告書の集計・分析
-          </p>
-        </div>
-        <Button onClick={() => setLocation("/upload")} className="gap-2 shadow-sm">
-          <Plus className="h-4 w-4" />
-          新規登録
-        </Button>
-      </div>
-
-      {/* サマリーカード */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <SummaryCard
-          icon={<ClipboardList className="h-5 w-5 text-primary" />}
-          label="確定済み件数"
-          value={isLoading ? null : stats?.totalConfirmed ?? 0}
-          color="primary"
-        />
-        <SummaryCard
-          icon={<FileWarning className="h-5 w-5 text-amber-500" />}
-          label="未確定（下書き）"
-          value={isLoading ? null : stats?.totalDraft ?? 0}
-          color="amber"
-        />
-        <SummaryCard
-          icon={<Stethoscope className="h-5 w-5 text-blue-500" />}
-          label="ヒヤリハット"
-          value={isLoading ? null : stats?.byReportType["incident"] ?? 0}
-          color="blue"
-        />
-        <SummaryCard
-          icon={<FileText className="h-5 w-5 text-orange-500" />}
-          label="事故報告書"
-          value={isLoading ? null : stats?.byReportType["accident"] ?? 0}
-          color="orange"
-        />
-      </div>
-
-      {/* グラフ */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* 影響度レベル別 */}
-        <Card className="lg:col-span-2 shadow-sm border-border/60">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base font-semibold">影響度レベル別件数</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <Skeleton className="h-48 w-full" />
-            ) : impactChartData.length === 0 ? (
-              <div className="h-48 flex items-center justify-center text-muted-foreground text-sm">
-                データがありません
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={impactChartData} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
-                  <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                  <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
-                  <Tooltip
-                    contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e2e8f0" }}
-                  />
-                  <Bar dataKey="件数" radius={[4, 4, 0, 0]}>
-                    {impactChartData.map((entry, index) => (
-                      <Cell key={index} fill={entry.fill} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* 報告種別 */}
-        <Card className="shadow-sm border-border/60">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base font-semibold">報告種別内訳</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <Skeleton className="h-48 w-full" />
-            ) : reportTypeChartData.every((d) => d.value === 0) ? (
-              <div className="h-48 flex items-center justify-center text-muted-foreground text-sm">
-                データがありません
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height={200}>
-                <PieChart>
-                  <Pie
-                    data={reportTypeChartData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={50}
-                    outerRadius={75}
-                    paddingAngle={3}
-                    dataKey="value"
-                  >
-                    {reportTypeChartData.map((_, index) => (
-                      <Cell key={index} fill={PIE_COLORS[index % PIE_COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
-                  <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12 }} />
-                </PieChart>
-              </ResponsiveContainer>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* 月次トレンドグラフ */}
-      <Card className="shadow-sm border-border/60">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base font-semibold">月次報告件数推移（12ヶ月）</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {trendsLoading ? (
-            <Skeleton className="h-56 w-full" />
-          ) : (monthlyTrends?.every((d) => d.total === 0)) ? (
-            <div className="h-56 flex items-center justify-center text-muted-foreground text-sm">
-              確定済みデータがありません
-            </div>
-          ) : (
-            <ResponsiveContainer width="100%" height={220}>
-              <LineChart
-                data={monthlyTrends}
-                margin={{ top: 8, right: 16, left: -16, bottom: 0 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis
-                  dataKey="month"
-                  tick={{ fontSize: 11 }}
-                  tickFormatter={(v: string) => v.replace(/\d{4}年/, "")}
-                />
-                <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                <Tooltip
-                  contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e2e8f0" }}
-                  formatter={(value: number, name: string) => [
-                    value,
-                    name === "incident" ? "ヒヤリハット" : name === "accident" ? "事故報告書" : "合計",
-                  ]}
-                />
-                <Legend
-                  iconType="circle"
-                  iconSize={8}
-                  wrapperStyle={{ fontSize: 12 }}
-                  formatter={(value: string) =>
-                    value === "incident" ? "ヒヤリハット" : value === "accident" ? "事故報告書" : "合計"
-                  }
-                />
-                <Line
-                  type="monotone"
-                  dataKey="incident"
-                  stroke="#3b82f6"
-                  strokeWidth={2}
-                  dot={{ r: 3, fill: "#3b82f6" }}
-                  activeDot={{ r: 5 }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="accident"
-                  stroke="#f97316"
-                  strokeWidth={2}
-                  dot={{ r: 3, fill: "#f97316" }}
-                  activeDot={{ r: 5 }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="total"
-                  stroke="#6b7280"
-                  strokeWidth={1.5}
-                  strokeDasharray="4 3"
-                  dot={false}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* 下書き一覧 */}
-      {(draftIncidents?.length ?? 0) > 0 && (
-        <Card className="shadow-sm border-amber-200 bg-amber-50/50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base font-semibold flex items-center gap-2 text-amber-700">
-              <AlertTriangle className="h-4 w-4" />
-              確定待ちの報告書（{draftIncidents?.length}件）
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {draftIncidents?.map((inc) => (
-                <IncidentRow
-                  key={inc.id}
-                  incident={inc}
-                  onClick={() => setLocation(`/incidents/${inc.id}`)}
-                />
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* 最近の確定済みインシデント */}
-      <Card className="shadow-sm border-border/60">
-        <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4 text-primary" />
-              最近の確定済み報告書
-            </CardTitle>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-xs text-muted-foreground"
-              onClick={() => setLocation("/incidents")}
-            >
-              すべて表示
-            </Button>
+    <div className="max-w-6xl mx-auto space-y-6">
+      <section className="rounded-2xl bg-gradient-to-r from-teal-700 to-emerald-600 text-white px-6 py-7 shadow-sm">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <div className="flex items-center gap-2 text-teal-100 text-sm mb-2"><HardDrive className="h-4 w-4" />完全ローカルモード</div>
+            <h1 className="text-2xl font-bold tracking-tight">インシデント管理ダッシュボード</h1>
+            <p className="mt-2 text-sm text-teal-50">報告書と添付ファイルは、この端末のブラウザ内だけに保存されています。</p>
           </div>
-        </CardHeader>
-        <CardContent>
-          {(recentIncidents?.length ?? 0) === 0 ? (
-            <div className="py-8 text-center text-muted-foreground text-sm">
-              確定済みのインシデントはありません
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {recentIncidents?.map((inc) => (
-                <IncidentRow
-                  key={inc.id}
-                  incident={inc}
-                  onClick={() => setLocation(`/incidents/${inc.id}`)}
-                />
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+          <Link href="/upload"><Button className="bg-white text-teal-800 hover:bg-teal-50 gap-2"><FilePlus2 className="h-4 w-4" />新規報告書を登録</Button></Link>
+        </div>
+      </section>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {summaryCards.map((card) => (
+          <Card key={card.label} className="shadow-none"><CardContent className="p-4"><div className={`inline-flex h-9 w-9 items-center justify-center rounded-lg ${card.className}`}><card.icon className="h-4 w-4" /></div><p className="mt-3 text-2xl font-bold">{card.value}</p><p className="text-xs text-muted-foreground mt-1">{card.label}</p></CardContent></Card>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
+        <Card className="lg:col-span-3 shadow-none"><CardHeader className="flex-row items-center justify-between pb-3"><CardTitle className="text-base">最近更新した報告書</CardTitle><Link href="/incidents" className="text-sm text-teal-700 hover:underline">一覧を見る</Link></CardHeader><CardContent>{recent.length === 0 ? <div className="py-8 text-center text-sm text-muted-foreground">まだ報告書がありません。新規登録から記録を始めてください。</div> : <div className="divide-y">{recent.map((report) => <Link key={report.id} href={`/incidents/${report.id}`} className="flex items-center justify-between gap-4 py-3 hover:bg-muted/40 px-2 -mx-2 rounded-md"><div className="min-w-0"><div className="flex gap-2 items-center"><Badge variant={report.reportType === "accident" ? "destructive" : "secondary"}>{report.reportType === "accident" ? "アクシデント" : "インシデント"}</Badge><span className="text-xs text-muted-foreground">{report.status === "confirmed" ? "確定済み" : "下書き"}</span></div><p className="mt-1 text-sm font-medium truncate">{report.summaryWhat || "事象概要が未入力です"}</p><p className="text-xs text-muted-foreground mt-0.5">{report.location || "場所未入力"} ・ {report.occurredAt?.replace("T", " ") || "日時未入力"}</p></div><span className="shrink-0 text-xs text-muted-foreground">Lv{report.impactLevel}</span></Link>)}</div>}</CardContent></Card>
+        <Card className="lg:col-span-2 shadow-none"><CardHeader className="pb-3"><CardTitle className="text-base flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-emerald-600" />ローカル運用の注意</CardTitle></CardHeader><CardContent className="text-sm text-muted-foreground leading-6 space-y-3"><p>ログインは不要で、入力内容・添付画像・PDFは外部サーバーへ送信されません。</p><p>端末の故障やブラウザのサイトデータ削除に備え、定期的にバックアップZIPを書き出してください。</p><Link href="/backup"><Button variant="outline" size="sm" className="w-full">バックアップ・復元を開く</Button></Link></CardContent></Card>
+      </div>
     </div>
-  );
-}
-
-function SummaryCard({
-  icon,
-  label,
-  value,
-  color,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: number | null;
-  color: string;
-}) {
-  return (
-    <Card className="shadow-sm border-border/60">
-      <CardContent className="pt-5 pb-4">
-        <div className="flex items-start justify-between">
-          <div className="space-y-1">
-            <p className="text-xs text-muted-foreground font-medium">{label}</p>
-            {value === null ? (
-              <Skeleton className="h-8 w-16" />
-            ) : (
-              <p className="text-3xl font-bold tracking-tight">{value}</p>
-            )}
-          </div>
-          <div className="p-2 rounded-lg bg-muted/50">{icon}</div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function IncidentRow({
-  incident,
-  onClick,
-}: {
-  incident: any;
-  onClick: () => void;
-}) {
-  const urgent = isUrgentIncident(
-    (incident.impactLevel ?? "0") as ImpactLevel,
-    (incident.urgency ?? "Low") as UrgencyLevel
-  );
-
-  return (
-    <button
-      onClick={onClick}
-      className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-muted/50 transition-colors text-left group"
-    >
-      <span
-        className={`inline-flex items-center justify-center rounded-md px-2 py-1 text-xs font-semibold level-${incident.impactLevel ?? "0"} shrink-0`}
-      >
-        {IMPACT_LEVEL_SHORT[(incident.impactLevel ?? "0") as ImpactLevel]}
-      </span>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium truncate">
-          {incident.summaryWhat ?? "（概要なし）"}
-        </p>
-        <p className="text-xs text-muted-foreground truncate">
-          {incident.location ?? "場所不明"} ·{" "}
-          {incident.occurredAt ?? "日時不明"}
-        </p>
-      </div>
-      <div className="flex items-center gap-2 shrink-0">
-        {urgent && (
-          <Badge className="badge-high text-xs px-2 py-0.5">緊急</Badge>
-        )}
-        <span className="text-xs text-muted-foreground">
-          {REPORT_TYPE_SHORT[(incident.reportType ?? "incident") as ReportType]}
-        </span>
-      </div>
-    </button>
   );
 }

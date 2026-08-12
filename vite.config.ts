@@ -5,6 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { defineConfig, type Plugin, type ViteDevServer } from "vite";
 import { vitePluginManusRuntime } from "vite-plugin-manus-runtime";
+import { VitePWA } from "vite-plugin-pwa";
 
 // =============================================================================
 // Manus Debug Collector - Vite Plugin
@@ -150,10 +151,38 @@ function vitePluginManusDebugCollector(): Plugin {
   };
 }
 
-const plugins = [react(), tailwindcss(), jsxLocPlugin(), vitePluginManusRuntime(), vitePluginManusDebugCollector()];
+const isStaticBuild = process.env.STATIC_BUILD === "true";
+const publicBase = process.env.VITE_BASE_PATH ?? "/";
 
 export default defineConfig({
-  plugins,
+  base: publicBase,
+  plugins: [
+    react(),
+    tailwindcss(),
+    jsxLocPlugin(),
+    !isStaticBuild && vitePluginManusRuntime(),
+    !isStaticBuild && vitePluginManusDebugCollector(),
+    VitePWA({
+      registerType: "autoUpdate",
+      includeAssets: ["icon.svg"],
+      manifest: {
+        name: "ローカル インシデント管理",
+        short_name: "インシデント管理",
+        description: "端末内だけで運用するインシデント・アクシデント管理PWA",
+        start_url: publicBase,
+        scope: publicBase,
+        display: "standalone",
+        background_color: "#f8fafc",
+        theme_color: "#0f766e",
+        icons: [{ src: "icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any maskable" }],
+      },
+      workbox: {
+        globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
+        navigateFallback: `${publicBase.replace(/\/$/, "")}/index.html`,
+        cleanupOutdatedCaches: true,
+      },
+    }),
+  ],
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "client", "src"),
@@ -165,11 +194,12 @@ export default defineConfig({
   root: path.resolve(import.meta.dirname, "client"),
   publicDir: path.resolve(import.meta.dirname, "client", "public"),
   build: {
-    outDir: path.resolve(import.meta.dirname, "dist/public"),
+    outDir: path.resolve(import.meta.dirname, "dist"),
     emptyOutDir: true,
   },
   server: {
     host: true,
+    port: 3000,
     allowedHosts: [
       ".manuspre.computer",
       ".manus.computer",

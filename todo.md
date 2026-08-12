@@ -155,3 +155,15 @@
 - [x] client/src/App.tsx: /monthly-report ルートを追加
 - [x] client/src/components/DashboardLayout.tsx: サイドバーに「月次レポート」リンクを追加
 - [x] server/incidents.test.ts: getMonthlyReportData テストを追加
+
+## 移行: 完全ローカルPWA・GitHub Pages対応
+- [x] 現行の外部依存・既存クラウドデータの保全方法・GitHub連携状況を調査する
+- [x] 既存クラウドデータをJSON形式でバックアップ・ローカルPWAへインポートできる仕組みを設計する
+- [x] IndexedDB（報告書・画像/PDF Blob・分析結果）を使用するローカルデータ層を実装する
+- [x] ログイン・サーバーDB・クラウドストレージ・必須外部APIへの依存を画面フローから除去する
+- [x] ローカル処理で利用できる報告書入力・分類・分析・月次PDF出力を実装する
+- [x] Service Worker・Web App Manifest・事前キャッシュを設定し、オフライン起動を可能にする
+- [x] GitHub Pagesサブパス対応の静的ビルド設定を追加する
+- [x] GitHub ActionsによるGitHub Pages自動デプロイ設定を追加する
+- [x] ローカル保存・バックアップ/復元・オフライン起動・静的ビルドをテストする
+- [ ] GitHubリポジトリへ移行内容を同期し、GitHub Pagesを有効化して公開URLを確認する
