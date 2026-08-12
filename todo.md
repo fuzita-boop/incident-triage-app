@@ -169,3 +169,4 @@
 - [ ] GitHubリポジトリへ移行内容を同期し、GitHub Pagesを有効化して公開URLを確認する
 - [ ] GitHub ActionsのNode.jsセットアップ順序を修正し、Pagesデプロイを成功させる
 - [ ] GitHub Actionsのpnpmバージョン定義をpackage.jsonへ統一し、セットアップ競合を解消する
+- [ ] GitHub ActionsでGitHub Pagesを初回有効化できる設定を追加する
