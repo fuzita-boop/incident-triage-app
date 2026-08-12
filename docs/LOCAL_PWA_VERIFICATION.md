@@ -35,3 +35,11 @@ Service Workerの事前キャッシュには381エントリが保存されてい
 GitHubの公開確認ダイアログが表示され、「I want to make this repository public」という最初の確認ステップが確認できた。GitHubは影響内容の確認後に公開実行ボタンを表示する段階的な確認フローを使用する。
 
 ユーザー確認に基づき、GitHubが示した影響内容を確認する段階を進め、最終の「Make this repository public」操作を送信した。公開状態への変更完了とPagesワークフローの実行結果は、次の確認で検証する。
+
+GitHubのPages設定画面で公開元を「GitHub Actions」に変更し、「GitHub Pages source saved」を確認した。静的PWAのワークフローを手動開始し、GitHub Pagesへの配信処理が進行中である。
+
+## 2026-08-12: GitHub Pages公開確認
+
+GitHub Actionsの手動デプロイは成功した。公開URL `https://fuzita-boop.github.io/incident-triage-app/` へアクセスし、GitHub Pagesのリポジトリサブパス上でローカルPWAのダッシュボード、サイドバー、報告書登録・一覧・月次レポート・バックアップ復元の各導線が表示されることを確認した。
+
+公開URL上でもService Workerが有効で、スコープが `https://fuzita-boop.github.io/incident-triage-app/` であることを確認した。また、ブラウザ内には `incident-triage-local` IndexedDBデータベースが作成されている。

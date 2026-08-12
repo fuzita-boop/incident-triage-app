@@ -166,7 +166,8 @@
 - [x] GitHub Pagesサブパス対応の静的ビルド設定を追加する
 - [x] GitHub ActionsによるGitHub Pages自動デプロイ設定を追加する
 - [x] ローカル保存・バックアップ/復元・オフライン起動・静的ビルドをテストする
-- [ ] GitHubリポジトリへ移行内容を同期し、GitHub Pagesを有効化して公開URLを確認する
-- [ ] GitHub ActionsのNode.jsセットアップ順序を修正し、Pagesデプロイを成功させる
-- [ ] GitHub Actionsのpnpmバージョン定義をpackage.jsonへ統一し、セットアップ競合を解消する
-- [ ] GitHub ActionsでGitHub Pagesを初回有効化できる設定を追加する
+- [x] GitHubリポジトリへ移行内容を同期し、GitHub Pagesを有効化して公開URLを確認する
+- [x] GitHub ActionsのNode.jsセットアップ順序を修正し、Pagesデプロイを成功させる
+- [x] GitHub Actionsのpnpmバージョン定義をpackage.jsonへ統一し、セットアップ競合を解消する
+- [x] GitHub ActionsにPages有効化設定（enablement: true）を追加し、UI有効化後のデプロイ互換性を確保する
+- [x] GitHub Pages設定画面で公開元をGitHub Actionsに切り替え、Actions権限エラーを解消する
